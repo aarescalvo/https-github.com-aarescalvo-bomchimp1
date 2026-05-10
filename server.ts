@@ -92,31 +92,17 @@ async function startServer() {
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
-    const { readFileSync } = await import("fs");
+    console.log("🛠️  Iniciando Vite en modo desarrollo...");
     const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "custom",
+      server: { 
+        middlewareMode: true,
+        host: '0.0.0.0',
+        port: 3000
+      },
+      appType: "spa",
     });
     app.use(vite.middlewares);
-
-    app.get('*', async (req, res, next) => {
-      const url = req.originalUrl;
-      
-      // Skip API and assets - let vite.middlewares handle them
-      if (url.startsWith('/api') || url.includes('.')) {
-        return next();
-      }
-
-      try {
-        const indexPath = path.resolve(process.cwd(), 'index.html');
-        let template = readFileSync(indexPath, 'utf-8');
-        template = await vite.transformIndexHtml(url, template);
-        res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
-      } catch (e: any) {
-        vite.ssrFixStacktrace(e);
-        next(e);
-      }
-    });
+    console.log("✅ Vite Middleware acoplado.");
   } else {
     // Production serving
     const distPath = path.join(process.cwd(), 'dist');
