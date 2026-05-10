@@ -101,9 +101,14 @@ async function startServer() {
 
     app.get('*', async (req, res, next) => {
       const url = req.originalUrl;
+      
+      // Skip API and assets - let vite.middlewares handle them
+      if (url.startsWith('/api') || url.includes('.')) {
+        return next();
+      }
+
       try {
-        // Try multiple paths for index.html to be robust locally
-        const indexPath = path.resolve(__dirname, 'index.html');
+        const indexPath = path.resolve(process.cwd(), 'index.html');
         let template = readFileSync(indexPath, 'utf-8');
         template = await vite.transformIndexHtml(url, template);
         res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
