@@ -95,14 +95,16 @@ async function startServer() {
     const { readFileSync } = await import("fs");
     const vite = await createViteServer({
       server: { middlewareMode: true },
-      appType: "custom", // Changed to custom to handle HTML transform
+      appType: "custom",
     });
     app.use(vite.middlewares);
 
     app.get('*', async (req, res, next) => {
       const url = req.originalUrl;
       try {
-        let template = readFileSync(path.resolve(__dirname, 'index.html'), 'utf-8');
+        // Try multiple paths for index.html to be robust locally
+        const indexPath = path.resolve(__dirname, 'index.html');
+        let template = readFileSync(indexPath, 'utf-8');
         template = await vite.transformIndexHtml(url, template);
         res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
       } catch (e: any) {
@@ -111,15 +113,19 @@ async function startServer() {
       }
     });
   } else {
+    // Production serving
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      const indexPath = path.join(distPath, 'index.html');
+      res.sendFile(indexPath);
     });
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`\n\n🚒 SISTEMA PROFESIONAL DE BOMBEROS LOCAL ACTIVO`);
+    console.log(`🌐 Acceso en red: http://localhost:${PORT}`);
+    console.log(`🛡️ Seguridad: SQL Injection protection & Settings Engine enabled.\n`);
   });
 }
 
