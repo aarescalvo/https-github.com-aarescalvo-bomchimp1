@@ -54,6 +54,18 @@ export default function Home({ settings }: { settings: any }) {
     fetchData();
   }, []);
 
+  const handleWhatsAppDispatch = (inc: any) => {
+    const message = `🚨 *DESPACHO DE EMERGENCIA BVC* 🚨\n\n` + 
+                    `📍 *UBICACIÓN:* ${inc.location}\n` +
+                    `🔥 *TIPO:* ${inc.type}\n` +
+                    `📝 *INFO:* ${inc.description}\n` +
+                    `⏰ *SALIDA:* ${new Date().toLocaleTimeString()}\n\n` +
+                    `*POR FAVOR REPORTARSE AL CUARTEL INMEDIATAMENTE*`;
+    
+    const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+  };
+
   const handleQuickIncident = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -64,6 +76,7 @@ export default function Home({ settings }: { settings: any }) {
       });
       if (res.ok) {
         toast.success('Incidencia despachada');
+        handleWhatsAppDispatch(newIncident);
         setShowIncidentModal(false);
         setNewIncident({ type: 'INCENDIO', description: '', location: '' });
         fetchData();

@@ -42,7 +42,11 @@ async function startServer() {
       rank TEXT,
       dni TEXT UNIQUE,
       phone TEXT,
-      status TEXT DEFAULT 'ACTIVO'
+      status TEXT DEFAULT 'ACTIVO',
+      birthdate DATE,
+      address TEXT,
+      email TEXT,
+      blood_group TEXT
     );
 
     CREATE TABLE IF NOT EXISTS fleet (
@@ -51,7 +55,30 @@ async function startServer() {
       type TEXT,
       model TEXT,
       status TEXT DEFAULT 'OPERATIVO',
-      last_maintenance DATETIME
+      last_maintenance DATETIME,
+      patent TEXT,
+      year INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS personnel_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      personnel_id INTEGER,
+      type TEXT, -- 'NOVEDAD' or 'CAPACITACION'
+      title TEXT,
+      description TEXT,
+      date DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(personnel_id) REFERENCES personnel(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS maintenance_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      unit_id TEXT,
+      type TEXT, -- 'PREVENTIVO' or 'CORRECTIVO'
+      description TEXT,
+      date DATETIME DEFAULT CURRENT_TIMESTAMP,
+      mileage INTEGER,
+      cost REAL,
+      FOREIGN KEY(unit_id) REFERENCES fleet(unit_id)
     );
 
     CREATE TABLE IF NOT EXISTS payments (
@@ -122,6 +149,14 @@ async function startServer() {
     INSERT OR IGNORE INTO settings (key, value) VALUES ('logo_url', '');
   `);
 
+  // Migrations for existing data
+  try { db.exec("ALTER TABLE personnel ADD COLUMN birthdate DATE;"); } catch(e) {}
+  try { db.exec("ALTER TABLE personnel ADD COLUMN address TEXT;"); } catch(e) {}
+  try { db.exec("ALTER TABLE personnel ADD COLUMN email TEXT;"); } catch(e) {}
+  try { db.exec("ALTER TABLE personnel ADD COLUMN blood_group TEXT;"); } catch(e) {}
+  try { db.exec("ALTER TABLE fleet ADD COLUMN patent TEXT;"); } catch(e) {}
+  try { db.exec("ALTER TABLE fleet ADD COLUMN year INTEGER;"); } catch(e) {}
+
   app.use(express.json());
   app.use(cookieParser());
 
@@ -147,6 +182,7 @@ async function startServer() {
       for (const [key, value] of Object.entries(data)) {
         stmt.run(key, value);
       }
+      db.prepare('INSERT INTO audit_log (action, details) VALUES (?, ?)').run('CAMBIO_CONFIG', `Actualización de parámetros globales: ${Object.keys(data).join(', ')}`);
     });
 
     transaction(updates);
@@ -155,16 +191,29 @@ async function startServer() {
 
   app.get("/api/stats", (req, res) => {
     try {
-      // Mock stats matching what the frontend expects
+      const activeGuard = db.prepare('SELECT COUNT(*) as count FROM personnel WHERE status = "ACTIVO"').get() as any;
+      const readyUnits = db.prepare('SELECT COUNT(*) as count FROM fleet WHERE status = "OPERATIVO"').get() as any;
+      const totalUnits = db.prepare('SELECT COUNT(*) as count FROM fleet').get() as any;
+      const incidents24h = db.prepare('SELECT COUNT(*) as count FROM incidents WHERE timestamp > datetime("now", "-1 day")').get() as any;
+      
       res.json({
-        active_guard: 8,
-        ready_units: 5,
-        total_units: 6,
-        incidents_24h: 3,
+        active_guard: activeGuard.count || 0,
+        ready_units: readyUnits.count || 0,
+        total_units: totalUnits.count || 0,
+        incidents_24h: incidents24h.count || 0,
         alerts: 0
       });
     } catch (err) {
       res.status(500).json({ error: "Error stats" });
+    }
+  });
+
+  app.get("/api/audit", (req, res) => {
+    try {
+      const data = db.prepare('SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT 100').all();
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: "Error fetch audit" });
     }
   });
 
@@ -240,13 +289,34 @@ async function startServer() {
 
   app.post("/api/personnel", (req, res) => {
     try {
-      const { name, rank, dni, phone, status } = req.body;
-      const stmt = db.prepare('INSERT INTO personnel (name, rank, dni, phone, status) VALUES (?, ?, ?, ?, ?)');
-      const info = stmt.run(name, rank, dni, phone, status || 'ACTIVO');
+      const { name, rank, dni, phone, status, birthdate, address, email, blood_group } = req.body;
+      const stmt = db.prepare('INSERT INTO personnel (name, rank, dni, phone, status, birthdate, address, email, blood_group) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+      const info = stmt.run(name, rank, dni, phone, status || 'ACTIVO', birthdate, address, email, blood_group);
       db.prepare('INSERT INTO audit_log (action, details) VALUES (?, ?)').run('ALTA_PERSONAL', `Nombre: ${name}, DNI: ${dni}`);
       res.json({ id: info.lastInsertRowid });
     } catch (err) {
+      console.error(err);
       res.status(500).json({ error: "Error creating personnel" });
+    }
+  });
+
+  app.get("/api/personnel/:id/records", (req, res) => {
+    try {
+      const data = db.prepare('SELECT * FROM personnel_records WHERE personnel_id = ? ORDER BY date DESC').all(req.params.id);
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: "Error fetch records" });
+    }
+  });
+
+  app.post("/api/personnel/records", (req, res) => {
+    try {
+      const { personnel_id, type, title, description } = req.body;
+      const stmt = db.prepare('INSERT INTO personnel_records (personnel_id, type, title, description) VALUES (?, ?, ?, ?)');
+      const info = stmt.run(personnel_id, type, title, description);
+      res.json({ id: info.lastInsertRowid });
+    } catch (err) {
+      res.status(500).json({ error: "Error creating record" });
     }
   });
 
@@ -310,12 +380,13 @@ async function startServer() {
     }
   });
 
-  app.get("/api/audit", (req, res) => {
+  app.patch("/api/users/:id", (req, res) => {
     try {
-      const data = db.prepare('SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT 100').all();
-      res.json(data);
+      const { permissions } = req.body;
+      db.prepare('UPDATE users SET permissions = ? WHERE id = ?').run(permissions, req.params.id);
+      res.json({ success: true });
     } catch (err) {
-      res.status(500).json({ error: "Error fetch audit log" });
+      res.status(500).json({ error: "Error updating user" });
     }
   });
 
@@ -325,6 +396,42 @@ async function startServer() {
       res.json(data);
     } catch (err) {
       res.status(500).json({ error: "Error fetch fleet" });
+    }
+  });
+
+  app.post("/api/fleet", (req, res) => {
+    try {
+      const { unit_id, type, model, patent, year, status } = req.body;
+      const stmt = db.prepare('INSERT INTO fleet (unit_id, type, model, patent, year, status) VALUES (?, ?, ?, ?, ?, ?)');
+      const info = stmt.run(unit_id, type, model, patent, year, status || 'OPERATIVO');
+      db.prepare('INSERT INTO audit_log (action, details) VALUES (?, ?)').run('ALTA_FLOTA', `Unidad: ${unit_id}`);
+      res.json({ id: info.lastInsertRowid });
+    } catch (err) {
+      res.status(500).json({ error: "Error creating fleet" });
+    }
+  });
+
+  app.get("/api/fleet/maintenance", (req, res) => {
+    try {
+      const data = db.prepare('SELECT * FROM maintenance_log ORDER BY date DESC').all();
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: "Error fetch maintenance" });
+    }
+  });
+
+  app.post("/api/fleet/maintenance", (req, res) => {
+    try {
+      const { unit_id, type, description, mileage, cost } = req.body;
+      const stmt = db.prepare('INSERT INTO maintenance_log (unit_id, type, description, mileage, cost) VALUES (?, ?, ?, ?, ?)');
+      const info = stmt.run(unit_id, type, description, mileage, cost);
+      
+      // Update last maintenance in fleet table
+      db.prepare('UPDATE fleet SET last_maintenance = CURRENT_TIMESTAMP WHERE unit_id = ?').run(unit_id);
+      
+      res.json({ id: info.lastInsertRowid });
+    } catch (err) {
+      res.status(500).json({ error: "Error creating maintenance" });
     }
   });
 

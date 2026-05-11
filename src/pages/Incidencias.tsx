@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Flame, Plus, Search, MapPin, Clock, Filter, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Flame, Plus, Search, MapPin, Clock, Filter, AlertCircle, CheckCircle2, MessageSquare, Share2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Incident {
@@ -38,6 +38,18 @@ export default function Incidencias() {
     fetchIncidents();
   }, []);
 
+  const handleWhatsAppDispatch = (inc: Partial<Incident>) => {
+    const message = `🚨 *DESPACHO DE EMERGENCIA BVC* 🚨\n\n` + 
+                    `📍 *UBICACIÓN:* ${inc.location}\n` +
+                    `🔥 *TIPO:* ${inc.type}\n` +
+                    `📝 *INFO:* ${inc.description}\n` +
+                    `⏰ *SALIDA:* ${new Date().toLocaleTimeString()}\n\n` +
+                    `*POR FAVOR REPORTARSE AL CUARTEL INMEDIATAMENTE*`;
+    
+    const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -47,7 +59,8 @@ export default function Incidencias() {
         body: JSON.stringify(newIncident)
       });
       if (res.ok) {
-        toast.success('Incidencia registrada y despachada');
+        toast.success('Incidencia registrada');
+        handleWhatsAppDispatch(newIncident);
         setShowModal(false);
         setNewIncident({ type: 'INCENDIO ESTRUCTURAL', description: '', location: '', status: 'ACTIVO' });
         fetchIncidents();
@@ -72,7 +85,7 @@ export default function Incidencias() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-black tracking-tight text-[#1D2124] uppercase">Incidencias</h2>
-          <p className="text-gray-400 text-xs font-bold uppercase tracking-widest">Centro de despacho y despacho</p>
+          <p className="text-gray-400 text-xs font-bold uppercase tracking-widest">Centro de despacho y notificaciones</p>
         </div>
         <button 
           onClick={() => setShowModal(true)}
@@ -102,7 +115,7 @@ export default function Incidencias() {
             
             <div className="divide-y divide-gray-50">
               {incidents.map((inc) => (
-                <div key={inc.id} className="p-6 hover:bg-gray-50/50 transition-colors group cursor-pointer">
+                <div key={inc.id} className="p-6 hover:bg-gray-50/50 transition-colors group cursor-pointer relative">
                   <div className="flex gap-6 items-start">
                     <div className={`p-4 rounded-2xl ${getStatusColor(inc.status)} flex-shrink-0`}>
                       <Flame size={24} />
@@ -133,11 +146,22 @@ export default function Incidencias() {
                        <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest shadow-sm ${getStatusColor(inc.status)}`}>
                         {inc.status}
                       </span>
-                      <button className="text-[10px] font-black text-[#228BE6] uppercase hover:underline">Ver Mapa</button>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleWhatsAppDispatch(inc);
+                        }}
+                        className="flex items-center gap-2 p-2 px-4 bg-[#25D366] text-white rounded-xl text-[10px] font-black uppercase hover:scale-105 transition-all shadow-md"
+                      >
+                        <MessageSquare size={14} /> Despachar
+                      </button>
                     </div>
                   </div>
                 </div>
               ))}
+              {incidents.length === 0 && !loading && (
+                <div className="py-20 text-center text-gray-300 font-black uppercase tracking-widest text-xs">Sin registros activos</div>
+              )}
             </div>
           </div>
         </div>
@@ -161,7 +185,6 @@ export default function Incidencias() {
                 </div>
               </div>
             </div>
-            <button className="w-full mt-8 py-3 bg-white/10 hover:bg-white/20 text-white text-[10px] font-black rounded-xl border border-white/10 transition-all uppercase tracking-widest">Generar Reporte Mensual</button>
           </div>
 
           <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
@@ -172,8 +195,8 @@ export default function Incidencias() {
                 <p className="text-[10px] font-bold text-gray-600 uppercase">Activar alarma general en cuartel</p>
               </li>
                <li className="flex items-start gap-3">
-                <div className="w-5 h-5 rounded bg-gray-100 flex items-center justify-center text-[10px] font-black flex-shrink-0">2</div>
-                <p className="text-[10px] font-bold text-gray-600 uppercase">Notificar por grupo de Whatsapp</p>
+                <div className="w-20 bg-[#25D366] text-white rounded flex items-center justify-center text-[8px] font-black flex-shrink-0 p-1">WHATSAPP</div>
+                <p className="text-[10px] font-bold text-gray-600 uppercase italic">Notificar al grupo de Primera Respuesta</p>
               </li>
                <li className="flex items-start gap-3">
                 <div className="w-5 h-5 rounded bg-gray-100 flex items-center justify-center text-[10px] font-black flex-shrink-0">3</div>
@@ -248,7 +271,7 @@ export default function Incidencias() {
                   className="flex-1 h-12 bg-[#FA5252] text-white font-black rounded-xl shadow-[0_4px_0_0_#C92A2A] hover:translate-y-[2px] transition-all uppercase text-xs flex items-center justify-center gap-2"
                 >
                   <Flame size={18} />
-                  Despachar Ahora
+                  Despachar y Notificar
                 </button>
               </div>
             </form>

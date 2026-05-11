@@ -19,6 +19,7 @@ import Pagos from './pages/Pagos';
 import Cancha from './pages/Cancha';
 import Guardia from './pages/Guardia';
 import Subsidios from './pages/Subsidios';
+import Mapa from './pages/Mapa';
 
 // Layouts
 import AppLayout from './layouts/AppLayout';
@@ -104,9 +105,7 @@ export default function App() {
                     <Route path="/cancha" element={<Cancha />} />
                     <Route path="/guardia" element={<Guardia />} />
                     <Route path="/subsidios" element={<Subsidios />} />
-                    
-                    {/* Remaining placeholders */}
-                    <Route path="/mapa" element={<div className="p-8"><h2 className="text-2xl font-black uppercase">Mapa Operativo</h2><p className="text-gray-400 font-bold uppercase mt-2">Módulo en Desarrollo</p></div>} />
+                    <Route path="/mapa" element={<Mapa />} />
                     
                     <Route path="*" element={<Navigate to="/dashboard" replace />} />
                   </Routes>

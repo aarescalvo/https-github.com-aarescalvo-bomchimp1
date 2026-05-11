@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Text, Image as ImageIcon, Layout, Users, Shield, History, Plus, Trash2, Flame } from 'lucide-react';
+import { Save, Text, Image as ImageIcon, Layout, Users, Shield, History, Plus, Trash2, Flame, CheckSquare, Square } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface SettingsProps {
@@ -12,6 +12,7 @@ interface Operator {
   username: string;
   name: string;
   role: string;
+  permissions: string;
 }
 
 interface AuditLog {
@@ -21,6 +22,16 @@ interface AuditLog {
   timestamp: string;
 }
 
+const MODULES = [
+  { id: 'DASHBOARD', name: 'Panel Principal' },
+  { id: 'OPERACIONES', name: 'Incidencias y Salidas' },
+  { id: 'PERSONAL', name: 'Personal y Legajos' },
+  { id: 'FLOTA', name: 'Flota y Mantenimiento' },
+  { id: 'FINANZAS', name: 'Pagos y Facturación' },
+  { id: 'DOCUMENTACION', name: 'Subsidios y Archivo' },
+  { id: 'CONFIGURACION', name: 'Configuración de Sistema' },
+];
+
 export default function Settings({ settings, onUpdate }: SettingsProps) {
   const [activeTab, setActiveTab] = useState<'TEXTOS' | 'OPERADORES' | 'AUDITORIA'>('TEXTOS');
   const [localSettings, setLocalSettings] = useState(settings);
@@ -29,7 +40,9 @@ export default function Settings({ settings, onUpdate }: SettingsProps) {
   const [loading, setLoading] = useState(false);
   
   const [showOpModal, setShowOpModal] = useState(false);
-  const [newOp, setNewOp] = useState({ username: '', name: '', role: 'OPERADOR' });
+  const [newOp, setNewOp] = useState({ username: '', name: '', role: 'OPERADOR', permissions: 'DASHBOARD' });
+
+  const [editingPermissions, setEditingPermissions] = useState<Operator | null>(null);
 
   useEffect(() => {
     setLocalSettings(settings);
@@ -63,7 +76,7 @@ export default function Settings({ settings, onUpdate }: SettingsProps) {
       if (res.ok) {
         toast.success('Operador creado');
         setShowOpModal(false);
-        setNewOp({ username: '', name: '', role: 'OPERADOR' });
+        setNewOp({ username: '', name: '', role: 'OPERADOR', permissions: 'DASHBOARD' });
         fetchOperators();
       }
     } catch (err) {
@@ -71,16 +84,43 @@ export default function Settings({ settings, onUpdate }: SettingsProps) {
     }
   };
 
+  const togglePermission = (moduleId: string, isCreate: boolean) => {
+    if (isCreate) {
+      const current = newOp.permissions.split(',').filter(p => p !== '');
+      const next = current.includes(moduleId) 
+        ? current.filter(p => p !== moduleId)
+        : [...current, moduleId];
+      setNewOp({ ...newOp, permissions: next.join(',') });
+    } else if (editingPermissions) {
+      const current = editingPermissions.permissions.split(',').filter(p => p !== '');
+      const next = current.includes(moduleId) 
+        ? current.filter(p => p !== moduleId)
+        : [...current, moduleId];
+      setEditingPermissions({ ...editingPermissions, permissions: next.join(',') });
+    }
+  };
+
+  const handleUpdatePermissions = async () => {
+    if (!editingPermissions) return;
+    try {
+      const res = await fetch(`/api/users/${editingPermissions.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ permissions: editingPermissions.permissions })
+      });
+      if (res.ok) {
+        toast.success('Permisos actualizados');
+        setEditingPermissions(null);
+        fetchOperators();
+      }
+    } catch (err) {
+      toast.error('Error al actualizar permisos');
+    }
+  };
+
   const handleSaveTextSettings = async () => {
     setLoading(true);
     try {
-      // For each key-value in localSettings, update it via /api/settings
-      // Since our /api/settings POST expects {key, value}, but the original handleSave logic in other prompts was different, 
-      // let's adjust it to send multiple requests if necessary or check if server supports bulk.
-      // Based on server.ts view_file from checkpoint, it usually takes {key, value} or an entire object.
-      // Let's use the object structure if the server supports it, or individual ones if not.
-      // Re-viewing server.ts earlier: it seemed to take {key, value}.
-      
       const promises = Object.entries(localSettings).map(([key, value]) => 
         fetch('/api/settings', {
           method: 'POST',
@@ -196,20 +236,32 @@ export default function Settings({ settings, onUpdate }: SettingsProps) {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {operators.map((op) => (
-                <div key={op.id} className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex items-center justify-between group hover:border-[#FFD43B] transition-all">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center text-gray-300 group-hover:text-[#FFD43B]">
-                       <Shield size={24} />
-                    </div>
-                    <div>
-                      <p className="text-lg font-black text-[#1D2124] uppercase leading-none">{op.name}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">@{op.username}</span>
-                        <span className="px-2 py-0.5 bg-gray-50 text-[8px] font-black rounded text-blue-500 uppercase tracking-widest">{op.role}</span>
+                <div key={op.id} className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col group hover:border-[#FFD43B] transition-all">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center text-gray-300 group-hover:text-[#FFD43B]">
+                         <Shield size={24} />
+                      </div>
+                      <div>
+                        <p className="text-lg font-black text-[#1D2124] uppercase leading-none">{op.name}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">@{op.username}</span>
+                        </div>
                       </div>
                     </div>
+                    <button onClick={() => setEditingPermissions(op)} className="p-2 bg-gray-50 rounded-lg text-gray-400 hover:bg-[#1D2124] hover:text-white transition-all"><Settings size={16} /></button>
                   </div>
-                  <button className="p-2 text-gray-200 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={18} /></button>
+                  
+                  <div className="pt-4 border-t border-gray-50">
+                    <p className="text-[8px] font-black text-gray-300 uppercase tracking-[0.2em] mb-2">Accesos Permitidos</p>
+                    <div className="flex flex-wrap gap-1">
+                      {op.permissions?.split(',').map(p => (
+                        <span key={p} className="px-2 py-1 bg-yellow-50 text-[8px] font-black rounded uppercase text-[#FAB005]">
+                          {p}
+                        </span>
+                      )) || <span className="text-[8px] font-black text-red-300 uppercase">Sin Accesos</span>}
+                    </div>
+                  </div>
                 </div>
               ))}
               {operators.length === 0 && (
@@ -263,35 +315,79 @@ export default function Settings({ settings, onUpdate }: SettingsProps) {
 
       {showOpModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1D2124]/80 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
-            <form onSubmit={handleCreateOperator} className="p-8 space-y-6">
-              <div>
-                <h3 className="text-2xl font-black text-[#1D2124] uppercase mb-1">Nuevo Operador</h3>
-                <p className="text-gray-400 text-[10px] font-bold uppercase tracking-widest">Define las credenciales de acceso</p>
+          <div className="bg-white w-full max-w-2xl rounded-[2.5rem] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <form onSubmit={handleCreateOperator} className="p-10 grid grid-cols-1 md:grid-cols-2 gap-10">
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-2xl font-black text-[#1D2124] uppercase mb-1">Nuevo Operador</h3>
+                  <p className="text-gray-400 text-[10px] font-bold uppercase tracking-widest">Define las credenciales de acceso</p>
+                </div>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Nombre Completo</label>
+                    <input required placeholder="E.G. JUAN PEREZ" className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-bold uppercase focus:border-[#FFD43B] focus:outline-none transition-all" value={newOp.name} onChange={(e) => setNewOp({...newOp, name: e.target.value})} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Nombre de Usuario</label>
+                    <input required placeholder="E.G. JPEREZ" className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-bold uppercase focus:border-[#FFD43B] focus:outline-none transition-all" value={newOp.username} onChange={(e) => setNewOp({...newOp, username: e.target.value})} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Rol asignado</label>
+                    <select className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-black uppercase focus:border-[#FFD43B] focus:outline-none transition-all" value={newOp.role} onChange={(e) => setNewOp({...newOp, role: e.target.value})}>
+                      <option value="OPERADOR">OPERADOR DE SISTEMA</option>
+                      <option value="ADMINISTRADOR">ADMINISTRADOR TOTAL</option>
+                      <option value="AUDITOR">LECTURA / AUDITOR</option>
+                    </select>
+                  </div>
+                </div>
               </div>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Nombre Completo</label>
-                  <input required placeholder="E.G. JUAN PEREZ" className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-bold uppercase focus:border-[#FFD43B] focus:outline-none transition-all" value={newOp.name} onChange={(e) => setNewOp({...newOp, name: e.target.value})} />
+              
+              <div className="space-y-6">
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest italic border-b pb-2">Módulos habilitados</p>
+                <div className="grid grid-cols-1 gap-2">
+                  {MODULES.map(mod => (
+                    <button 
+                      key={mod.id}
+                      type="button"
+                      onClick={() => togglePermission(mod.id, true)}
+                      className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-all text-left"
+                    >
+                      {newOp.permissions.split(',').includes(mod.id) ? <CheckSquare className="text-[#FFD43B]" size={18} /> : <Square className="text-gray-200" size={18} />}
+                      <span className="text-[10px] font-black uppercase tracking-widest text-[#1D2124]">{mod.name}</span>
+                    </button>
+                  ))}
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Nombre de Usuario</label>
-                  <input required placeholder="E.G. JPEREZ" className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-bold uppercase focus:border-[#FFD43B] focus:outline-none transition-all" value={newOp.username} onChange={(e) => setNewOp({...newOp, username: e.target.value})} />
+                <div className="flex gap-4 pt-4">
+                   <button type="button" onClick={() => setShowOpModal(false)} className="flex-1 h-12 text-[#1D2124] font-black rounded-xl border-2 border-gray-100 uppercase text-xs">Cerrar</button>
+                   <button type="submit" className="flex-1 h-12 bg-[#FFD43B] text-[#1D2124] font-black rounded-xl shadow-[0_4px_0_0_#FAB005] uppercase text-xs italic">Dar de Alta</button>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Rol asignado</label>
-                  <select className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-black uppercase focus:border-[#FFD43B] focus:outline-none transition-all" value={newOp.role} onChange={(e) => setNewOp({...newOp, role: e.target.value})}>
-                    <option value="OPERADOR">OPERADOR DE SISTEMA</option>
-                    <option value="ADMINISTRADOR">ADMINISTRADOR TOTAL</option>
-                    <option value="AUDITOR">LECTURA / AUDITOR</option>
-                  </select>
-                </div>
-              </div>
-              <div className="flex gap-4 pt-4">
-                 <button type="button" onClick={() => setShowOpModal(false)} className="flex-1 h-12 text-[#1D2124] font-black rounded-xl border-2 border-gray-100 uppercase text-xs">Cerrar</button>
-                 <button type="submit" className="flex-1 h-12 bg-[#FFD43B] text-[#1D2124] font-black rounded-xl shadow-[0_4px_0_0_#FAB005] uppercase text-xs italic">Confirmar Alta</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {editingPermissions && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1D2124]/80 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-md rounded-3xl p-10 shadow-2xl animate-in zoom-in-95">
+             <h3 className="text-xl font-black text-[#1D2124] uppercase italic mb-6">Permisos de {editingPermissions.name}</h3>
+             <div className="grid grid-cols-1 gap-2 mb-8">
+                {MODULES.map(mod => (
+                  <button 
+                    key={mod.id}
+                    type="button"
+                    onClick={() => togglePermission(mod.id, false)}
+                    className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-all text-left"
+                  >
+                    {editingPermissions.permissions.split(',').includes(mod.id) ? <CheckSquare className="text-[#FFD43B]" size={18} /> : <Square className="text-gray-200" size={18} />}
+                    <span className="text-[10px] font-black uppercase tracking-widest text-[#1D2124]">{mod.name}</span>
+                  </button>
+                ))}
+             </div>
+             <div className="flex gap-4">
+                <button onClick={() => setEditingPermissions(null)} className="flex-1 h-12 font-black uppercase text-xs border border-gray-100 rounded-xl">Cancelar</button>
+                <button onClick={handleUpdatePermissions} className="flex-1 h-12 bg-[#1D2124] text-white font-black rounded-xl uppercase text-xs italic">Actualizar</button>
+             </div>
           </div>
         </div>
       )}
