@@ -1,0 +1,5 @@
+TOKEN DE VERIFICACION: 778899
+HORA DE GENERACION: 2026-05-11 19:45:00Z
+Si ves este archivo en GitHub pero no en tu PC, intenta:
+git fetch origin --prune
+git reset --hard origin/main

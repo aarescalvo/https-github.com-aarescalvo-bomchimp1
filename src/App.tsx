@@ -64,7 +64,7 @@ export default function App() {
           <div className="w-12 h-12 border-4 border-[#FFD43B]/30 border-t-[#FFD43B] rounded-full animate-spin" />
           <p className="text-[#FFD43B] text-[10px] font-black uppercase tracking-widest text-center">
             Iniciando Sistema...<br/>
-            <span className="opacity-50">v2.0.4-STABLE</span>
+            <span className="opacity-50">v2.0.4-STABLE [882244]</span>
           </p>
         </div>
       </div>
