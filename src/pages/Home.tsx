@@ -76,7 +76,10 @@ export default function Home({ settings }: { settings: any }) {
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-black tracking-tight text-[#1D2124] uppercase">{settings.dashboard_title}</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-3xl font-black tracking-tight text-[#1D2124] uppercase">{settings.dashboard_title}</h2>
+            <span className="bg-[#1D2124] text-white text-[8px] font-black px-2 py-0.5 rounded-full uppercase">v2.0.4-STABLE</span>
+          </div>
           <p className="text-gray-400 text-xs font-bold uppercase tracking-widest">{settings.dashboard_subtitle}</p>
         </div>
         <div className="flex gap-4 flex-wrap">

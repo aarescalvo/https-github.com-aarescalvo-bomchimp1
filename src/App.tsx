@@ -62,7 +62,10 @@ export default function App() {
       <div className="h-screen w-screen flex items-center justify-center bg-[#1D2124]">
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-4 border-[#FFD43B]/30 border-t-[#FFD43B] rounded-full animate-spin" />
-          <p className="text-[#FFD43B] text-[10px] font-black uppercase tracking-widest">Iniciando Sistema...</p>
+          <p className="text-[#FFD43B] text-[10px] font-black uppercase tracking-widest text-center">
+            Iniciando Sistema...<br/>
+            <span className="opacity-50">v2.0.4-STABLE</span>
+          </p>
         </div>
       </div>
     );

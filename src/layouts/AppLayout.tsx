@@ -26,6 +26,7 @@ export default function AppLayout({ children, onLogout, settings }: { children: 
               <div className="bg-[#F8F9FA] border border-gray-100 px-4 py-2 rounded-full flex items-center gap-2">
                 <span className="w-2 h-2 bg-[#20C997] rounded-full animate-pulse"></span>
                 <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">SISTEMA OK</span>
+                <span className="ml-2 px-2 py-0.5 bg-gray-200 text-[8px] font-black text-gray-400 rounded">v2.0.4</span>
               </div>
               <button className="p-3 bg-gray-50 text-gray-400 hover:bg-[#FFD43B] hover:text-[#1D2124] rounded-full transition-all relative flex-shrink-0">
                 <Bell size={20} />
