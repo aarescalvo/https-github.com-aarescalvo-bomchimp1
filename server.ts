@@ -584,6 +584,23 @@ async function startServer() {
     }
   });
 
+  app.get("/api/personnel/:id/attendance-stats", (req, res) => {
+    try {
+      const stats = db.prepare(`
+        SELECT 
+          COUNT(*) as total_entries,
+          SUM(strftime('%s', check_out) - strftime('%s', check_in)) / 3600 as total_hours,
+          type
+        FROM attendance 
+        WHERE personnel_id = ? AND check_out IS NOT NULL
+        GROUP BY type
+      `).all(req.params.id);
+      res.json(stats);
+    } catch (err) {
+      res.status(500).json({ error: "Error fetch stats" });
+    }
+  });
+
   // Generic mocks for non-implemented routes
   app.get(["/api/mapa"], (req, res) => {
     res.json([]);

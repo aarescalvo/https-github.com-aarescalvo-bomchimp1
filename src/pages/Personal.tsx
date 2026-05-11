@@ -31,6 +31,7 @@ export default function Personal() {
   const [showModal, setShowModal] = useState(false);
   const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
   const [personRecords, setPersonRecords] = useState<PersonalRecord[]>([]);
+  const [personStats, setPersonStats] = useState<any[]>([]);
   
   const [showRecordModal, setShowRecordModal] = useState(false);
   const [newRecord, setNewRecord] = useState({ type: 'NOVEDAD', title: '', description: '' });
@@ -63,6 +64,16 @@ export default function Personal() {
     const res = await fetch(`/api/personnel/${personId}/records`);
     const data = await res.json();
     setPersonRecords(data);
+  };
+
+  const fetchStats = async (personId: number) => {
+    try {
+      const res = await fetch(`/api/personnel/${personId}/attendance-stats`);
+      const data = await res.json();
+      setPersonStats(data);
+    } catch (err) {
+      console.error('Error fetching stats');
+    }
   };
 
   useEffect(() => {
@@ -205,6 +216,7 @@ export default function Personal() {
                 onClick={() => {
                   setSelectedPerson(p);
                   fetchRecords(p.id);
+                  fetchStats(p.id);
                 }}
                 className="mt-6 w-full py-4 bg-[#F8F9FA] hover:bg-[#1D2124] hover:text-white text-[#1D2124] text-[10px] font-black rounded-2xl transition-all uppercase tracking-widest flex items-center justify-center gap-2"
               >
@@ -338,6 +350,19 @@ export default function Personal() {
                     <AlertTriangle className="text-red-500 mb-2" />
                     <p className="text-[10px] font-black text-red-500 uppercase">Sin Alergias Registradas</p>
                     <p className="text-[8px] font-black text-red-300 uppercase mt-1">Legajo médico completo</p>
+                 </div>
+
+                 <div className="space-y-4">
+                    <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest border-b pb-2 italic">Estadísticas de Servicio</h4>
+                    <div className="grid grid-cols-2 gap-2">
+                       {personStats.map(stat => (
+                          <div key={stat.type} className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                             <p className="text-[8px] font-black text-gray-400 uppercase">{stat.type}</p>
+                             <p className="text-xl font-black text-[#1D2124] italic">{Math.round(stat.total_hours || 0)} <span className="text-[10px]">HRS</span></p>
+                          </div>
+                       ))}
+                       {personStats.length === 0 && <p className="text-[10px] font-black text-gray-300 italic uppercase">Sin horas acumuladas</p>}
+                    </div>
                  </div>
               </div>
 
