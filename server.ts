@@ -36,6 +36,43 @@ async function startServer() {
       status TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS personnel (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT,
+      rank TEXT,
+      dni TEXT UNIQUE,
+      phone TEXT,
+      status TEXT DEFAULT 'ACTIVO'
+    );
+
+    CREATE TABLE IF NOT EXISTS fleet (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      unit_id TEXT UNIQUE,
+      type TEXT,
+      model TEXT,
+      status TEXT DEFAULT 'OPERATIVO',
+      last_maintenance DATETIME
+    );
+
+    CREATE TABLE IF NOT EXISTS payments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      payer_name TEXT,
+      amount REAL,
+      date DATETIME DEFAULT CURRENT_TIMESTAMP,
+      category TEXT,
+      status TEXT DEFAULT 'PAGADO',
+      concept TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS reservations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_name TEXT,
+      field_name TEXT,
+      start_time DATETIME,
+      end_time DATETIME,
+      status TEXT DEFAULT 'CONFIRMADA'
+    );
+
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT
@@ -131,8 +168,76 @@ async function startServer() {
     }
   });
 
-  // Generic mocks for non-implemented routes to prevent 404 in Promise.all
-  app.get(["/api/incidents", "/api/personal", "/api/flota"], (req, res) => {
+  // Real API routes
+  app.get("/api/incidents", (req, res) => {
+    try {
+      const incidents = db.prepare('SELECT * FROM incidents ORDER BY timestamp DESC').all();
+      res.json(incidents);
+    } catch (err) {
+      res.status(500).json({ error: "Error fetch incidents" });
+    }
+  });
+
+  app.get("/api/personnel", (req, res) => {
+    try {
+      const data = db.prepare('SELECT * FROM personnel').all();
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: "Error fetch personnel" });
+    }
+  });
+
+  app.get("/api/fleet", (req, res) => {
+    try {
+      const data = db.prepare('SELECT * FROM fleet').all();
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: "Error fetch fleet" });
+    }
+  });
+
+  app.get("/api/payments", (req, res) => {
+    try {
+      const data = db.prepare('SELECT * FROM payments ORDER BY date DESC').all();
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: "Error fetch payments" });
+    }
+  });
+
+  app.post("/api/payments", (req, res) => {
+    try {
+      const { payer_name, amount, category, concept } = req.body;
+      const stmt = db.prepare('INSERT INTO payments (payer_name, amount, category, concept) VALUES (?, ?, ?, ?)');
+      const info = stmt.run(payer_name, amount, category, concept);
+      res.json({ id: info.lastInsertRowid });
+    } catch (err) {
+      res.status(500).json({ error: "Error creating payment" });
+    }
+  });
+
+  app.get("/api/reservations", (req, res) => {
+    try {
+      const data = db.prepare('SELECT * FROM reservations ORDER BY start_time ASC').all();
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: "Error fetch reservations" });
+    }
+  });
+
+  app.post("/api/reservations", (req, res) => {
+    try {
+      const { user_name, field_name, start_time, end_time } = req.body;
+      const stmt = db.prepare('INSERT INTO reservations (user_name, field_name, start_time, end_time) VALUES (?, ?, ?, ?)');
+      const info = stmt.run(user_name, field_name, start_time, end_time);
+      res.json({ id: info.lastInsertRowid });
+    } catch (err) {
+      res.status(500).json({ error: "Error creating reservation" });
+    }
+  });
+
+  // Generic mocks for non-implemented routes
+  app.get(["/api/mapa"], (req, res) => {
     res.json([]);
   });
 

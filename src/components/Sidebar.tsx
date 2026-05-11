@@ -7,7 +7,9 @@ import {
   Truck, 
   Map as MapIcon, 
   Settings, 
-  LogOut 
+  LogOut,
+  CreditCard,
+  Target
 } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
@@ -47,6 +49,8 @@ export default function Sidebar({ settings, onLogout }: { settings: any, onLogou
         <SidebarLink to="/guardia" icon={ClipboardList} label="Libreta de Guardia" active={location.pathname === '/guardia'}/>
         <SidebarLink to="/personal" icon={Users} label="Personal" active={location.pathname === '/personal'}/>
         <SidebarLink to="/flota" icon={Truck} label="Flota y Activos" active={location.pathname === '/flota'}/>
+        <SidebarLink to="/pagos" icon={CreditCard} label="Pagos" active={location.pathname === '/pagos'}/>
+        <SidebarLink to="/cancha" icon={Target} label="Cancha de Fútbol" active={location.pathname === '/cancha'}/>
         <SidebarLink to="/mapa" icon={MapIcon} label="Mapa Operativo" active={location.pathname === '/mapa'}/>
       </nav>
 

@@ -12,6 +12,11 @@ import { AnimatePresence } from 'motion/react';
 import Login from './pages/Login';
 import Home from './pages/Home';
 import SettingsPage from './pages/Settings';
+import Incidencias from './pages/Incidencias';
+import Personal from './pages/Personal';
+import Flota from './pages/Flota';
+import Pagos from './pages/Pagos';
+import Cancha from './pages/Cancha';
 
 // Layouts
 import AppLayout from './layouts/AppLayout';
@@ -90,12 +95,15 @@ export default function App() {
                     <Route path="/dashboard" element={<Home settings={settings} />} />
                     <Route path="/ajustes" element={<SettingsPage settings={settings} onUpdate={fetchSettings} />} />
                     
-                    {/* Placeholder routes for others */}
-                    <Route path="/incidencias" element={<div className="p-8"><h2 className="text-2xl font-black">Módulo de Incidencias</h2><p>Próximamente...</p></div>} />
-                    <Route path="/guardia" element={<div className="p-8"><h2 className="text-2xl font-black">Libreta de Guardia</h2><p>Próximamente...</p></div>} />
-                    <Route path="/personal" element={<div className="p-8"><h2 className="text-2xl font-black">Gestión de Personal</h2><p>Próximamente...</p></div>} />
-                    <Route path="/flota" element={<div className="p-8"><h2 className="text-2xl font-black">Flota y Activos</h2><p>Próximamente...</p></div>} />
-                    <Route path="/mapa" element={<div className="p-8"><h2 className="text-2xl font-black">Mapa Operativo</h2><p>Próximamente...</p></div>} />
+                    <Route path="/incidencias" element={<Incidencias />} />
+                    <Route path="/personal" element={<Personal />} />
+                    <Route path="/flota" element={<Flota />} />
+                    <Route path="/pagos" element={<Pagos />} />
+                    <Route path="/cancha" element={<Cancha />} />
+                    
+                    {/* Remaining placeholders */}
+                    <Route path="/guardia" element={<div className="p-8"><h2 className="text-2xl font-black uppercase">Libreta de Guardia</h2><p className="text-gray-400 font-bold uppercase mt-2">Módulo en Desarrollo</p></div>} />
+                    <Route path="/mapa" element={<div className="p-8"><h2 className="text-2xl font-black uppercase">Mapa Operativo</h2><p className="text-gray-400 font-bold uppercase mt-2">Módulo en Desarrollo</p></div>} />
                     
                     <Route path="*" element={<Navigate to="/dashboard" replace />} />
                   </Routes>
