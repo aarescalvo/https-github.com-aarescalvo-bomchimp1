@@ -72,6 +72,9 @@ export default function Sidebar({ settings, onLogout }: { settings: any, onLogou
         <button className="w-full py-2 bg-white/10 hover:bg-white/20 text-white text-[10px] font-black rounded-lg transition-all uppercase tracking-widest border border-white/10">
           PERFIL
         </button>
+        <div className="mt-4 text-center">
+          <p className="text-[8px] text-white/20 font-mono uppercase tracking-tighter">Versión de Sistema: 2.0.4-STABLE</p>
+        </div>
       </div>
     </aside>
   );

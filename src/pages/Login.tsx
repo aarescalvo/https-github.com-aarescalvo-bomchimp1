@@ -86,8 +86,9 @@ export default function Login({ onLogin, settings }: { onLogin: () => void, sett
 
         <div className="mt-10 pt-6 border-t border-gray-100 text-center">
           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-            SISTEMA BOOT v2.0 © 2026 — CHIMPAY RN
+            SISTEMA BOOT v2.0.4-STABLE © 2026 — CHIMPAY RN
           </p>
+          <p className="text-[8px] text-gray-300 font-mono mt-1">BUILD_ID: 20260511_REV4</p>
         </div>
       </motion.div>
     </div>

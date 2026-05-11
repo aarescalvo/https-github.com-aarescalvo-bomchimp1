@@ -192,7 +192,7 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`\n\n🚒 SISTEMA PROFESIONAL DE BOMBEROS LOCAL ACTIVO`);
+    console.log(`\n\n🚒 SISTEMA PROFESIONAL DE BOMBEROS LOCAL ACTIVO [v2.0.4]`);
     console.log(`🌐 Acceso en red: http://localhost:${PORT}`);
     console.log(`🛡️ Seguridad: SQL Injection protection, Zod validation, Modular architecture enabled.\n`);
   });
