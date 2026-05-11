@@ -9,7 +9,9 @@ import {
   Settings, 
   LogOut,
   CreditCard,
-  Target
+  Target,
+  CalendarRange,
+  FileText
 } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
@@ -47,8 +49,10 @@ export default function Sidebar({ settings, onLogout }: { settings: any, onLogou
         <SidebarLink to="/dashboard" icon={BarChart3} label="Dashboard" active={location.pathname === '/dashboard'} />
         <SidebarLink to="/incidencias" icon={Flame} label="Incidencias" active={location.pathname === '/incidencias'} />
         <SidebarLink to="/guardia" icon={ClipboardList} label="Libreta de Guardia" active={location.pathname === '/guardia'}/>
+        <SidebarLink to="/calendario" icon={CalendarRange} label="Cronograma" active={location.pathname === '/calendario'}/>
         <SidebarLink to="/personal" icon={Users} label="Personal" active={location.pathname === '/personal'}/>
         <SidebarLink to="/flota" icon={Truck} label="Flota y Activos" active={location.pathname === '/flota'}/>
+        <SidebarLink to="/subsidios" icon={FileText} label="Subsidios" active={location.pathname === '/subsidios'}/>
         <SidebarLink to="/pagos" icon={CreditCard} label="Pagos" active={location.pathname === '/pagos'}/>
         <SidebarLink to="/cancha" icon={Target} label="Cancha de Fútbol" active={location.pathname === '/cancha'}/>
         <SidebarLink to="/mapa" icon={MapIcon} label="Mapa Operativo" active={location.pathname === '/mapa'}/>

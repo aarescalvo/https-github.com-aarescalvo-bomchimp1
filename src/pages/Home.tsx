@@ -8,11 +8,14 @@ import {
   Plus,
   Activity,
   MapPin,
-  Save
+  Save,
+  CalendarRange,
+  FileText,
+  UserCheck
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 
 export default function Home({ settings }: { settings: any }) {
   const navigate = useNavigate();
@@ -201,6 +204,30 @@ export default function Home({ settings }: { settings: any }) {
             GESTIONAR FLOTA
           </button>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <Link to="/calendario" className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm hover:border-[#FFD43B] transition-all group">
+           <div className="w-14 h-14 bg-gray-50 rounded-2xl flex items-center justify-center text-gray-300 group-hover:bg-[#FFD43B]/10 group-hover:text-[#FFD43B] mb-6 transition-all">
+              <CalendarRange size={24} />
+           </div>
+           <h4 className="text-xl font-black text-[#1D2124] uppercase italic mb-2">Cronograma Visual</h4>
+           <p className="text-gray-400 text-[10px] font-bold uppercase tracking-widest">Planifica las guardias del mes</p>
+        </Link>
+        <Link to="/subsidios" className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm hover:border-blue-400 transition-all group">
+           <div className="w-14 h-14 bg-gray-50 rounded-2xl flex items-center justify-center text-gray-300 group-hover:bg-blue-50 group-hover:text-blue-500 mb-6 transition-all">
+              <FileText size={24} />
+           </div>
+           <h4 className="text-xl font-black text-[#1D2124] uppercase italic mb-2">Subsidios y Archivo</h4>
+           <p className="text-gray-400 text-[10px] font-bold uppercase tracking-widest">Gestión documental y rendiciones</p>
+        </Link>
+        <Link to="/guardia" className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm hover:border-green-400 transition-all group">
+           <div className="w-14 h-14 bg-gray-50 rounded-2xl flex items-center justify-center text-gray-300 group-hover:bg-green-50 group-hover:text-green-500 mb-6 transition-all">
+              <UserCheck size={24} />
+           </div>
+           <h4 className="text-xl font-black text-[#1D2124] uppercase italic mb-2">Control de Personal</h4>
+           <p className="text-gray-400 text-[10px] font-bold uppercase tracking-widest">Ingresos y egresos en tiempo real</p>
+        </Link>
       </div>
 
       {showIncidentModal && (

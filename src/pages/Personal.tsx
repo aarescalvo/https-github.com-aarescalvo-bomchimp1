@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, UserPlus, Search, Phone, Mail, Award, MoreVertical, Calendar, MapPin, Droplet, BookOpen, MessageSquare, Plus, FileText, ChevronRight } from 'lucide-react';
+import { Users, UserPlus, Search, Phone, Mail, Award, MoreVertical, Calendar, MapPin, Droplet, BookOpen, MessageSquare, Plus, FileText, ChevronRight, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Person {

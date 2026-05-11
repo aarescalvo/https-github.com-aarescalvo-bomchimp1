@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Truck, Plus, Settings, AlertTriangle, CheckCircle2, MapPin, Gauge, Save, History, Tool, Wrench } from 'lucide-react';
+import { Truck, Plus, Settings, AlertTriangle, CheckCircle2, MapPin, Gauge, Save, History, Wrench } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Vehicle {

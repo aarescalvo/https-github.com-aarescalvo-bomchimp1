@@ -110,6 +110,25 @@ async function startServer() {
       shift TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS guard_shifts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      personnel_id INTEGER,
+      date DATE,
+      shift_type TEXT, -- 'MAÑANA', 'TARDE', 'NOCHE'
+      status TEXT DEFAULT 'PROGRAMADO',
+      FOREIGN KEY(personnel_id) REFERENCES personnel(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS attendance (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      personnel_id INTEGER,
+      check_in DATETIME DEFAULT CURRENT_TIMESTAMP,
+      check_out DATETIME,
+      type TEXT DEFAULT 'GUARDIA', -- 'GUARDIA', 'INCENDIO', 'LIMPIEZA'
+      observations TEXT,
+      FOREIGN KEY(personnel_id) REFERENCES personnel(id)
+    );
+
     CREATE TABLE IF NOT EXISTS documents (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT,
@@ -191,7 +210,7 @@ async function startServer() {
 
   app.get("/api/stats", (req, res) => {
     try {
-      const activeGuard = db.prepare('SELECT COUNT(*) as count FROM personnel WHERE status = "ACTIVO"').get() as any;
+      const activeGuard = db.prepare('SELECT COUNT(*) as count FROM attendance WHERE check_out IS NULL').get() as any;
       const readyUnits = db.prepare('SELECT COUNT(*) as count FROM fleet WHERE status = "OPERATIVO"').get() as any;
       const totalUnits = db.prepare('SELECT COUNT(*) as count FROM fleet').get() as any;
       const incidents24h = db.prepare('SELECT COUNT(*) as count FROM incidents WHERE timestamp > datetime("now", "-1 day")').get() as any;
@@ -472,6 +491,96 @@ async function startServer() {
       res.json({ id: info.lastInsertRowid });
     } catch (err) {
       res.status(500).json({ error: "Error creating reservation" });
+    }
+  });
+
+  // Guard Shifts (Calendar)
+  app.get("/api/guard-shifts", (req, res) => {
+    try {
+      const data = db.prepare(`
+        SELECT gs.*, p.name as personnel_name, p.rank as personnel_rank
+        FROM guard_shifts gs
+        JOIN personnel p ON gs.personnel_id = p.id
+        ORDER BY gs.date ASC
+      `).all();
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: "Error fetch guard shifts" });
+    }
+  });
+
+  app.post("/api/guard-shifts", (req, res) => {
+    try {
+      const { personnel_id, date, shift_type } = req.body;
+      const stmt = db.prepare('INSERT INTO guard_shifts (personnel_id, date, shift_type) VALUES (?, ?, ?)');
+      const info = stmt.run(personnel_id, date, shift_type);
+      res.json({ id: info.lastInsertRowid });
+    } catch (err) {
+      res.status(500).json({ error: "Error creating shift" });
+    }
+  });
+
+  app.delete("/api/guard-shifts/:id", (req, res) => {
+    try {
+      db.prepare('DELETE FROM guard_shifts WHERE id = ?').run(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Error deleting shift" });
+    }
+  });
+
+  // Attendance (Check-in/Check-out)
+  app.get("/api/attendance", (req, res) => {
+    try {
+      const data = db.prepare(`
+        SELECT a.*, p.name as personnel_name, p.rank as personnel_rank
+        FROM attendance a
+        JOIN personnel p ON a.personnel_id = p.id
+        ORDER BY a.check_in DESC
+      `).all();
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: "Error fetch attendance" });
+    }
+  });
+
+  app.get("/api/attendance/active", (req, res) => {
+    try {
+      const data = db.prepare(`
+        SELECT a.*, p.name as personnel_name, p.rank as personnel_rank
+        FROM attendance a
+        JOIN personnel p ON a.personnel_id = p.id
+        WHERE a.check_out IS NULL
+      `).all();
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: "Error fetch active attendance" });
+    }
+  });
+
+  app.post("/api/attendance/check-in", (req, res) => {
+    try {
+      const { personnel_id, type, observations } = req.body;
+      const stmt = db.prepare('INSERT INTO attendance (personnel_id, type, observations) VALUES (?, ?, ?)');
+      const info = stmt.run(personnel_id, type, observations);
+      res.json({ id: info.lastInsertRowid });
+    } catch (err) {
+      res.status(500).json({ error: "Error check-in" });
+    }
+  });
+
+  app.post("/api/attendance/check-out/:id", (req, res) => {
+    try {
+      const { observations } = req.body;
+      db.prepare(`
+        UPDATE attendance 
+        SET check_out = CURRENT_TIMESTAMP, 
+            observations = COALESCE(?, observations)
+        WHERE id = ?
+      `).run(observations, req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Error check-out" });
     }
   });
 

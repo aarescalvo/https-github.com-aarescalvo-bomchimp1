@@ -18,6 +18,7 @@ import Flota from './pages/Flota';
 import Pagos from './pages/Pagos';
 import Cancha from './pages/Cancha';
 import Guardia from './pages/Guardia';
+import Calendario from './pages/Calendario';
 import Subsidios from './pages/Subsidios';
 import Mapa from './pages/Mapa';
 
@@ -104,6 +105,7 @@ export default function App() {
                     <Route path="/pagos" element={<Pagos />} />
                     <Route path="/cancha" element={<Cancha />} />
                     <Route path="/guardia" element={<Guardia />} />
+                    <Route path="/calendario" element={<Calendario />} />
                     <Route path="/subsidios" element={<Subsidios />} />
                     <Route path="/mapa" element={<Mapa />} />
                     

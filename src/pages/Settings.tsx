@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Text, Image as ImageIcon, Layout, Users, Shield, History, Plus, Trash2, Flame, CheckSquare, Square } from 'lucide-react';
+import { Save, Text, Image as ImageIcon, Layout, Users, Shield, History, Plus, Trash2, Flame, CheckSquare, Square, Settings as SettingsIcon } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface SettingsProps {
@@ -28,7 +28,8 @@ const MODULES = [
   { id: 'PERSONAL', name: 'Personal y Legajos' },
   { id: 'FLOTA', name: 'Flota y Mantenimiento' },
   { id: 'FINANZAS', name: 'Pagos y Facturación' },
-  { id: 'DOCUMENTACION', name: 'Subsidios y Archivo' },
+  { id: 'SUBSIDIOS', name: 'Subsidios y Archivo' },
+  { id: 'CRONOGRAMA', name: 'Cronograma de Guardias' },
   { id: 'CONFIGURACION', name: 'Configuración de Sistema' },
 ];
 
@@ -249,7 +250,7 @@ export default function Settings({ settings, onUpdate }: SettingsProps) {
                         </div>
                       </div>
                     </div>
-                    <button onClick={() => setEditingPermissions(op)} className="p-2 bg-gray-50 rounded-lg text-gray-400 hover:bg-[#1D2124] hover:text-white transition-all"><Settings size={16} /></button>
+                    <button onClick={() => setEditingPermissions(op)} className="p-2 bg-gray-50 rounded-lg text-gray-400 hover:bg-[#1D2124] hover:text-white transition-all"><SettingsIcon size={16} /></button>
                   </div>
                   
                   <div className="pt-4 border-t border-gray-50">
