@@ -1,0 +1,1076 @@
+================================================================================
+PROMPT DE ANÁLISIS Y PROPUESTAS DE MEJORA
+SISTEMA SGP-B CHIMPAY v2.0.4
+Sistema de Gestión Profesional para Cuarteles de Bomberos
+================================================================================
+
+CONTEXTO DEL PROYECTO
+================================================================================
+
+Repositorio: https://github.com/aarescalvo/https-github.com-aarescalvo-bomchimp1
+Descripción: "cuartel"
+Lenguaje principal: TypeScript
+Framework: React 19 + Vite 6 + Express 4 + SQLite (better-sqlite3)
+Versión: 2.0.4-STABLE
+Nombre interno: SGP-B Chimpay - "Operaciones Chimpay"
+
+TECNOLOGÍAS UTILIZADAS:
+- Frontend: React 19, Vite 6, Tailwind CSS 4, Lucide React, Framer Motion, React Router DOM 7, Recharts, Sonner (toasts), react-hook-form + zod (instalados pero NO usados), react-leaflet (mapas)
+- Backend: Express 4, better-sqlite3, cookie-parser, node-cron, nodemailer, pdfkit, exceljs, jsonwebtoken + bcryptjs (instalados pero NO usados)
+- Otros: date-fns, @google/genai (Gemini AI), @vis.gl/react-google-maps
+
+ESTRUCTURA DE ARCHIVOS:
+- server.ts → Backend monolítico (Express + SQLite + Vite middleware)
+- src/App.tsx → Router principal con auth por localStorage
+- src/components/Sidebar.tsx → Navegación lateral
+- src/layouts/AppLayout.tsx → Layout con header y sidebar
+- src/pages/ → 11 páginas (Home, Login, Incidencias, Personal, Guardia, Calendario, Flota, Pagos, Cancha, Subsidios, Mapa, Settings)
+
+MÓDULOS FUNCIONALES:
+1. Dashboard (Home.tsx) → Estadísticas + despacho rápido de incidencias
+2. Login (Login.tsx) → Autenticación hardcodeada admin/admin123
+3. Incidencias (Incidencias.tsx) → Registro y seguimiento de emergencias + despacho WhatsApp
+4. Personal (Personal.tsx) → Legajos de bomberos con datos filiatorios
+5. Guardia (Guardia.tsx) → Libreta de guardia + ingresos/egresos de personal
+6. Calendario (Calendario.tsx) → Cronograma mensual de guardias
+7. Flota (Flota.tsx) → Gestión de vehículos, mantenimiento y combustible
+8. Pagos (Pagos.tsx) → Registro de pagos y categorías
+9. Cancha (Cancha.tsx) → Reservas de cancha de fútbol
+10. Subsidios (Subsidios.tsx) → Gestión de documentos y subsidios
+11. Mapa (Mapa.tsx) → Mapa operativo (mock visual, sin mapa real funcional)
+12. Settings (Settings.tsx) → Configuración del sistema, operadores y auditoría
+
+ESQUEMA DE BASE DE DATOS (SQLite):
+- users (id, username, name, role, permissions, last_login) — NOTA: tabla duplicada en el CREATE
+- incidents (id, type, description, location, timestamp, status)
+- personnel (id, name, rank, dni, phone, status, birthdate, address, email, blood_group)
+- fleet (id, unit_id, type, model, status, last_maintenance, patent, year, engine_number, kilometers, fuel_type, last_service_mileage, notes)
+- personnel_records (id, personnel_id, type, title, description, date)
+- maintenance_log (id, unit_id, type, description, date, mileage, cost)
+- payments (id, payer_name, amount, date, category, status, concept)
+- reservations (id, user_name, field_name, start_time, end_time, status, price)
+- duty_log (id, officer_in_charge, observations, entry_time, exit_time, shift)
+- guard_shifts (id, personnel_id, date, shift_type, status)
+- attendance (id, personnel_id, check_in, check_out, type, observations, recorded_by, recorded_out_by)
+- fuel_log (id, unit_id, date, kilometers, amount_liters, cost, recorded_by)
+- documents (id, title, category, status, expiry_date, file_url)
+- audit_log (id, user_id, action, details, timestamp)
+- settings (key, value)
+
+================================================================================
+PROBLEMAS CRÍTICOS ENCONTRADOS
+================================================================================
+
+--- 1. SEGURIDAD — Gravedad: CRÍTICA ---
+
+1.1 Login hardcodeado:
+    - El login valida user === 'admin' && pass === 'admin123' directamente en el código
+    - No consulta la base de datos
+    - No usa hash de contraseña
+    - Cualquier persona que lea el código fuente obtiene acceso total
+
+1.2 Sin autenticación real:
+    - Solo usa localStorage.setItem('sgp_auth', 'true') para mantener sesión
+    - Cualquier usuario puede abrir DevTools y setear este valor
+    - No hay verificación server-side de sesión
+    - No hay expiración de sesión
+
+1.3 Sin middleware de autenticación:
+    - Ningún endpoint API verifica si el request viene de un usuario autenticado
+    - Cualquier persona puede hacer curl/Postman a /api/personnel, /api/incidents, etc.
+    - No hay validación de permisos por rol
+
+1.4 Tabla users duplicada:
+    - El CREATE TABLE users se ejecuta DOS veces con esquemas diferentes
+    - La primera: (id, username, password, role, last_login)
+    - La segunda: (id, username, name, role, permissions, last_login) — SIN password
+    - La segunda sobreescribe la primera, perdiendo la columna password
+
+1.5 Sin validación de input en el servidor:
+    - No hay sanitización de datos entrantes
+    - Vulnerable a XSS (Cross-Site Scripting)
+    - Vulnerable a inyección SQL (aunque better-sqlite3 usa prepared statements, no hay validación de tipos)
+    - No hay límite de tamaño en los campos de texto
+
+1.6 Sin protección CSRF:
+    - No hay tokens CSRF en los formularios
+    - Un sitio malicioso podría hacer requests en nombre del usuario
+
+1.7 Dependencias de seguridad instaladas pero NO usadas:
+    - jsonwebtoken está en package.json pero nunca se importa
+    - bcryptjs está en package.json pero nunca se importa
+    - Se incluyeron explícitamente para auth pero nunca se implementaron
+
+1.8 Tokens sensibles versionados:
+    - Archivos TOKEN_DE_SINCRONIZACION.txt, TOKEN_FINAL_VERIFICACION.txt, VERSION_PARA_CEMENTAR.txt en el repo
+    - Contienen tokens/credenciales que no deberían estar en control de versiones
+
+--- 2. BASE DE DATOS — Gravedad: ALTA ---
+
+2.1 Tabla users duplicada:
+    - Ver punto 1.4 — causa pérdida de datos y esquema inconsistente
+
+2.2 Migraciones con try/catch silencioso:
+    - Los ALTER TABLE están envueltos en try/catch vacíos
+    - Si una migración falla, no hay log ni notificación
+    - Imposible saber qué columnas existen realmente en producción
+    - Ejemplo: try { db.exec("ALTER TABLE personnel ADD COLUMN birthdate DATE;"); } catch(e) {}
+
+2.3 Sin índices:
+    - No hay índices en columnas frecuentemente consultadas
+    - personnel_id en attendance, guard_shifts, personnel_records
+    - date en guard_shifts, attendance, fuel_log
+    - status en incidents, fleet, personnel
+    - Esto causará degradación de performance con datos crecientes
+
+2.4 Sin endpoints DELETE/PUT para la mayoría de entidades:
+    - No se puede eliminar ni editar personal
+    - No se puede eliminar ni editar incidencias
+    - No se puede eliminar ni editar pagos
+    - No se puede editar reservas
+    - Solo existe DELETE para guard-shifts
+
+2.5 Sin ON DELETE CASCADE en las Foreign Keys:
+    - Las FK no tienen comportamiento de eliminación definido
+    - Si se elimina un registro de personnel, los registros en attendance, guard_shifts, personnel_records quedan huérfanos
+    - Datos inconsistentes garantizados con el tiempo
+
+2.6 Endpoint de alertas de vencimientos vacío:
+    - GET /api/alerts/vencimientos devuelve siempre { expirations: [], critical: 0 }
+    - No hay lógica de verificación real
+    - No consulta la tabla documents ni ninguna otra
+
+2.7 Balance de finanzas hardcodeado:
+    - GET /api/finances/balance devuelve valores fijos:
+      { balance: 150000.50, monthly_income: 45000, monthly_expense: 12000 }
+    - No calcula nada real desde la tabla payments
+
+2.8 Endpoint de guardia vacío:
+    - GET /api/guardia devuelve siempre { data: [] }
+    - No consulta duty_log ni attendance
+
+--- 3. MANEJO DE PERSONAL — Gravedad: ALTA ---
+
+3.1 Sin edición de personal:
+    - Solo existe POST /api/personnel (crear)
+    - No hay PUT/PATCH para editar datos existentes
+    - Un error en el ingreso requiere intervención directa en la DB
+
+3.2 Sin cambio de estado:
+    - No hay flujo para cambiar estado del personal (ACTIVO → LICENCIA → RESERVA → BAJA)
+    - No hay endpoint PATCH /api/personnel/:id/status
+    - No se registra cuándo/cómo cambió el estado
+
+3.3 Legajo médico incompleto:
+    - El modal de detalle muestra "Sin Alergias Registradas" hardcodeado
+    - No hay campos para: alergias, condiciones médicas, contacto de emergencia
+    - No hay campo para certificado médico o aptitud física
+    - No hay historial médico
+
+3.4 Sin foto de perfil:
+    - Solo muestra la inicial del nombre en un círculo
+    - No hay campo para URL de foto ni upload de imagen
+
+3.5 Sin cargo/especialidad funcional:
+    - El campo "rank" es jerarquía (BOMBERO, CABO, OFICIAL)
+    - Pero falta el rol funcional (chofer, operador de bomba, sanitario, rescatista)
+    - Esto es crítico para asignar guardias con cobertura de especialidades
+
+3.6 Sin fecha de ingreso al cuartel:
+    - No hay campo para la fecha de alta en la institución
+    - No se puede calcular antigüedad
+    - No se puede trackear el progreso/carrera del bombero
+
+3.7 Sin contacto de emergencia:
+    - No hay datos de familiar o contacto de emergencia
+    - Campo esencial para cualquier sistema de personal de emergencias
+
+3.8 Estadísticas de servicio frecuentemente vacías:
+    - El endpoint /api/personnel/:id/attendance-stats puede devolver vacío
+    - No hay manejo elegante de datos insuficientes
+    - No se muestran métricas alternativas cuando no hay datos
+
+3.9 Sin exportación de legajos:
+    - No se puede generar PDF del legajo completo
+    - pdfkit está instalado pero no se usa para esto
+    - Solo existe exportación CSV básica en la página de guardia
+
+3.10 Sin filtro por estado en la lista:
+    - Se puede buscar por nombre/DNI pero no filtrar por estado
+    - No hay tabs para ver solo ACTIVOS, LICENCIA, RESERVA, etc.
+
+--- 4. GUARDIAS — Gravedad: ALTA ---
+
+4.1 Libreta y Asistencia desconectadas:
+    - La libreta de guardia (duty_log) y el check-in/out (attendance) son módulos separados
+    - No hay relación entre un turno de guardia y las asistencias registradas
+    - No se puede saber qué personal estaba presente durante una guardia específica
+    - No se puede reconstruir quién estaba de servicio durante un incidente
+
+4.2 Sin validación de guardia duplicada:
+    - Un bombero puede ser asignado a dos guardias el mismo día/turno
+    - No hay restricción en la base de datos ni en la API
+    - No hay validación en el frontend
+
+4.3 Sin guardia mínima:
+    - No se valida que haya un mínimo de personal por turno
+    - Un turno puede quedar con 0 personas asignadas
+    - No hay alertas por guardias descubiertas
+
+4.4 Turnos rígidos:
+    - Solo 3 tipos fijos: MAÑANA, TARDE, NOCHE
+    - No son configurables desde Settings
+    - Los horarios están hardcodeados en el label del select
+    - No se puede adaptar a diferentes esquemas de turnos
+
+4.5 Sin rotación automática:
+    - Las guardias se asignan exclusivamente de forma manual
+    - No hay sistema de rotación equitativa
+    - No hay forma de distribuir guardias automáticamente
+    - Riesgo de que algunos bomberos tengan muchas más guardias que otros
+
+4.6 Sin notificación de guardia asignada:
+    - El personal no recibe aviso cuando se le asigna una guardia
+    - No hay recordatorio previo al turno
+    - No hay confirmación de recepción
+
+4.7 "Guardia Programada: 08" hardcodeado:
+    - El sidebar de la página de guardia muestra siempre "08"
+    - No consulta el endpoint real de guard-shifts
+    - Información engañosa para el operador
+
+4.8 Sin registro de novedades durante la guardia:
+    - La libreta es estática — se crea al inicio del turno
+    - No permite agregar eventos/novedades en tiempo real
+    - No hay timeline de eventos del turno
+
+4.9 Sin cierre formal de turno:
+    - No hay flujo de traspaso entre turnos
+    - No se genera resumen automático del turno saliente
+    - No hay checklist de cierre (vehículos presentes, novedades pendientes)
+
+4.10 Calendario sin vista semanal/diaria:
+    - Solo existe vista mensual
+    - No hay vista semanal para planificación
+    - No hay vista diaria para seguimiento del turno actual
+    - Los días son muy pequeños para mostrar información útil
+
+4.11 Sin contador de guardias por bombero:
+    - No se muestra cuántas guardias tiene cada bombero en el mes
+    - Imposible verificar distribución equitativa
+
+--- 5. ALERTAS — Gravedad: ALTA ---
+
+5.1 Sin sistema de alertas real:
+    - El endpoint GET /api/alerts/vencimientos devuelve siempre vacío
+    - No hay tabla de alertas en la base de datos
+    - No hay motor que genere alertas automáticamente
+    - El contador de alertas en el dashboard es siempre 0
+
+5.2 WhatsApp es manual:
+    - Solo genera un link wa.me que el usuario debe clickear
+    - No hay envío automático de mensajes
+    - No hay registro de mensajes enviados
+    - No hay confirmación de recepción
+    - Depende de que el operador recuerde enviar el mensaje
+
+5.3 Sin notificaciones push:
+    - No hay Service Worker registrado
+    - No hay Web Push API implementada
+    - Las actualizaciones requieren refresh manual
+
+5.4 Sin alertas de vencimiento de documentos:
+    - Los documentos en la tabla documents tienen expiry_date
+    - Pero no hay lógica que verifique vencimientos próximos
+    - No hay notificaciones cuando un documento está por vencer
+
+5.5 Sin alertas de mantenimiento de flota:
+    - Los vehículos tienen last_maintenance y last_service_mileage
+    - Pero no hay lógica que alerte cuando un vehículo necesita servicio
+    - No hay umbral configurable de kilometraje para mantenimiento
+
+5.6 Sin niveles de prioridad funcionales:
+    - Las incidencias tienen status pero no prioridad
+    - En el frontend se muestra "Prioridad: Alta" hardcodeado para todas
+    - No hay sistema de triaje
+
+5.7 Sin historial de alertas:
+    - No se pueden consultar alertas pasadas
+    - No hay registro de alertas enviadas
+    - No hay métricas de tiempo de respuesta
+
+5.8 Sin escalamiento:
+    - No hay lógica de escalamiento si una alerta no es atendida
+    - Una incidencia activa puede quedar sin atención indefinidamente
+    - No hay timeouts ni follow-up automático
+
+5.9 Contador de alertas falso:
+    - El dashboard muestra siempre alerts: 0
+    - El ícono de notificaciones (Bell) en el header no tiene funcionalidad
+    - El badge rojo en la campana es estático
+
+5.10 Sin canal múltiple:
+    - Solo WhatsApp como canal de notificación
+    - No hay notificaciones por email (nodemailer instalado pero no usado)
+    - No hay notificaciones in-app
+    - No hay SMS
+    - No hay integración con otros sistemas
+
+--- 6. ARQUITECTURA Y CÓDIGO — Gravedad: MEDIA ---
+
+6.1 Monolito server.ts:
+    - Todo el backend en UN archivo de ~450 líneas
+    - Creación de tablas, rutas API, middleware Vite, migraciones
+    - Difícil de mantener y escalar
+
+6.2 Sin separación de capas:
+    - No hay controllers, services, repositories
+    - La lógica de negocio está mezclada con la definición de rutas
+    - No hay separación de responsabilidades
+
+6.3 Sin manejo de errores centralizado:
+    - Cada endpoint tiene su propio try/catch
+    - Respuestas de error inconsistentes: { error: "string" } vs { success: false }
+    - No hay código de error estandarizado
+    - Los errores se loguean con console.error en algunos casos y en otros no
+
+6.4 Sin validación con Zod:
+    - Zod está instalado como dependencia
+    - react-hook-form está instalado
+    - @hookform/resolvers está instalado
+    - NINGUNO se usa en ningún lado del código
+
+6.5 Sin tipos compartidos:
+    - Las interfaces (Person, Incident, Attendance, etc.) se definen en cada componente
+    - Si se cambia un campo, hay que actualizar N archivos
+    - No hay archivo de tipos compartidos entre frontend y backend
+
+6.6 Estado hardcodeado en sidebar:
+    - "Of. Rodriguez" y "Jefe de Turno" están fijos en el sidebar
+    - No refleja el usuario realmente autenticado
+    - El botón "PERFIL" no tiene funcionalidad
+
+6.7 Sin responsive real:
+    - El sidebar no tiene menú hamburguesa en mobile
+    - En pantallas pequeñas el sidebar se superpone al contenido
+    - No hay breakpoint para mobile
+    - El header tiene elementos ocultos en lg: hidden
+
+6.8 Sin tests:
+    - No hay ningún test unitario
+    - No hay tests de integración
+    - No hay tests e2e
+    - No hay scripts de test en package.json
+
+6.9 Búsqueda sin funcionalidad:
+    - El header tiene una barra de búsqueda "BUSCAR MÓVIL O GUARDIA..."
+    - No tiene funcionalidad implementada
+    - Es un input visual sin lógica
+
+6.10 Error de sintaxis en Flota.tsx:
+    - Línea: const aintenance, setMaintenance] = useState<MaintenanceRecord[]>([]);
+    - Falta el corchete de desestructuración: const [maintenance, setMaintenance]
+    - Esto causaría error de compilación
+
+================================================================================
+PROPUESTAS DE MEJORA DETALLADAS
+================================================================================
+
+--- A. MANEJO DE PERSONAL — Propuestas Prioritarias ---
+
+A1. CRUD COMPLETO DE PERSONAL
+    Descripción: Implementar operaciones de edición y eliminación lógica
+    Endpoints necesarios:
+      - PUT /api/personnel/:id → editar datos filiatorios completos
+      - PATCH /api/personnel/:id/status → cambio de estado (ACTIVO→LICENCIA→RESERVA→BAJA)
+      - DELETE /api/personnel/:id → baja lógica (status='BAJA', nunca eliminación física)
+    Detalles adicionales:
+      - Registrar cada cambio de estado en audit_log con motivo
+      - Al dar de baja, desasignar automáticamente de guardias futuras
+      - Soft delete: marcar como BAJA en vez de eliminar el registro
+      - Historial de cambios en tabla personnel_status_history
+    Nueva tabla sugerida:
+      CREATE TABLE personnel_status_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        personnel_id INTEGER,
+        previous_status TEXT,
+        new_status TEXT,
+        reason TEXT,
+        changed_by TEXT,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(personnel_id) REFERENCES personnel(id)
+      );
+
+A2. LEGAJO MÉDICO COMPLETO
+    Descripción: Agregar campos médicos esenciales al perfil del bombero
+    Nuevos campos en tabla personnel:
+      - allergies TEXT → alergias conocidas (coma separado)
+      - medical_conditions TEXT → condiciones médicas preexistentes
+      - emergency_contact_name TEXT → nombre del contacto de emergencia
+      - emergency_contact_phone TEXT → teléfono del contacto de emergencia
+      - medical_expiry DATE → fecha de vencimiento del certificado médico
+      - fitness_level TEXT → nivel de aptitud (APTO/CONDICIONAL/NO_APTO)
+    Alertas automáticas a implementar:
+      - Certificado médico próximo a vencer: alerta a 30, 15 y 7 días
+      - Fitness level = "NO_APTO" → no puede ser asignado a guardia (validación en backend)
+      - Fitness level = "CONDICIONAL" → advertencia al asignar guardia
+    Cambios en el frontend:
+      - Sección "Legajo Médico" en el modal de detalle del personal
+      - Editable por ADMIN y OFICIAL
+      - Indicador visual del estado de aptitud (badge de color)
+
+A3. SISTEMA DE ESPECIALIDADES Y ROLES FUNCIONALES
+    Descripción: Permitir asignar especialidades/certificaciones al personal
+    Nueva tabla:
+      CREATE TABLE personnel_specialties (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        personnel_id INTEGER,
+        specialty TEXT, -- CHOFER, OPERADOR_BOMBA, SANITARIO, RESCATE, HAZMAT, COMUNICACIONES, PRIMEROS_AUXILIOS
+        level TEXT,     -- BASICO, AVANZADO, INSTRUCTOR
+        certified_date DATE,
+        expiry_date DATE,
+        certificate_number TEXT,
+        FOREIGN KEY(personnel_id) REFERENCES personnel(id)
+      );
+    Funcionalidades:
+      - Asignar múltiples especialidades a cada bombero
+      - Alertar cuando certificaciones están próximas a vencer
+      - Filtrar personal disponible por especialidad al armar guardias
+      - Validar que cada guardia tenga al menos 1 CHOFER certificado
+      - Mostrar especialidades como badges en la tarjeta del personal
+
+A4. HISTORIAL DE LICENCIAS
+    Descripción: Sistema de solicitud y aprobación de licencias
+    Nueva tabla:
+      CREATE TABLE licenses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        personnel_id INTEGER,
+        type TEXT,        -- MEDICA, PERSONAL, COMISION, FRANCO, VACACIONES
+        start_date DATE,
+        end_date DATE,
+        reason TEXT,
+        status TEXT DEFAULT 'SOLICITADA', -- SOLICITADA, APROBADA, RECHAZADA, CANCELADA
+        approved_by TEXT,
+        approved_at DATETIME,
+        document_url TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(personnel_id) REFERENCES personnel(id)
+      );
+    Flujo de trabajo:
+      1. Bombero/Operador solicita licencia → estado SOLICITADA
+      2. Notificación al Jefe de Turno
+      3. Jefe aprueba/rechaza → estado APROBADA/RECHAZADA
+      4. Durante licencia → personal automáticamente excluido de asignaciones de guardia
+      5. Alerta si licencia médica excede X días configurable
+      6. Al vencer la licencia → notificar y cambiar estado del personal si es necesario
+    Endpoints:
+      - GET /api/licenses → listar todas las licencias
+      - GET /api/licenses/personnel/:id → licencias de un bombero
+      - POST /api/licenses → solicitar licencia
+      - PATCH /api/licenses/:id/approve → aprobar
+      - PATCH /api/licenses/:id/reject → rechazar
+      - GET /api/licenses/active → licencias vigentes (para excluir de guardias)
+
+A5. EXPORTACIÓN DE LEGAJOS PDF
+    Descripción: Generar PDF completo del legajo de cada bombero
+    Endpoint:
+      GET /api/personnel/:id/export
+    Contenido del PDF:
+      - Datos filiatorios completos
+      - Historial de guardias (meses filtrable)
+      - Capacitaciones y certificaciones
+      - Novedades y observaciones
+      - Estadísticas de servicio (horas, salidas, guardias)
+      - Estado de licencias vigentes
+    Implementación:
+      - Usar pdfkit (ya instalado en el proyecto)
+      - Template con logo del cuartel (configurable en settings)
+      - Formato profesional con encabezado, pie de página y numeración
+
+A6. FECHA DE INGRESO Y CÁLCULO DE ANTIGÜEDAD
+    Descripción: Registrar la fecha de ingreso a la institución
+    Nuevo campo en tabla personnel:
+      - join_date DATE → fecha de ingreso al cuartel
+    Funcionalidades:
+      - Calcular antigüedad automáticamente (años y meses)
+      - Mostrar en la tarjeta del personal
+      - Usar como criterio para rotación de guardias (priorizar por antigüedad)
+      - Reportes estadísticos de antigüedad del personal
+
+A7. FILTROS Y BÚSQUEDA AVANZADA
+    Descripción: Mejorar la búsqueda y filtrado en la lista de personal
+    Filtros a implementar:
+      - Por estado: ACTIVO, RESERVA, LICENCIA, RETIRADO, BAJA
+      - Por jerarquía: ASPIRANTE, BOMBERO, CABO, etc.
+      - Por especialidad: CHOFER, SANITARIO, etc.
+      - Por aptitud médica: APTO, CONDICIONAL, NO APTO
+      - Por antigüedad: < 1 año, 1-5 años, > 5 años
+    Búsqueda mejorada:
+      - Buscar por nombre, DNI, email, teléfono
+      - Resultados instantáneos con debounce
+
+--- B. GUARDIAS — Propuestas Prioritarias ---
+
+B1. VINCULACIÓN GUARDIA-ASISTENCIA-LIBRETA
+    Descripción: Unificar los tres módulos en un flujo coherente
+    Modelo relacional propuesto:
+      guard_shifts → tiene un duty_log (libreta de guardia)
+      guard_shifts → tiene múltiples attendance records
+      duty_log → referencia al guard_shift actual
+      attendance → referencia al guard_shift correspondiente
+    Modificaciones a la DB:
+      ALTER TABLE duty_log ADD COLUMN guard_shift_id INTEGER REFERENCES guard_shifts(id);
+      ALTER TABLE attendance ADD COLUMN guard_shift_id INTEGER REFERENCES guard_shifts(id);
+    Flujo integrado:
+      1. Al iniciar turno → crear guard_shift + duty_log + check-in masivo del personal asignado
+      2. Durante el turno → agregar novedades a la libreta vinculada al turno activo
+      3. Al cerrar turno → check-out masivo + cierre de libreta + generación de resumen + traspaso
+    Nuevos endpoints:
+      - GET /api/guard-shifts/active → turno actual con toda la info asociada
+      - POST /api/guard-shifts/:id/start → iniciar turno (check-in masivo)
+      - POST /api/guard-shifts/:id/close → cerrar turno (check-out masivo + resumen)
+      - POST /api/guard-shifts/:id/novedad → agregar novedad durante el turno
+
+B2. VALIDACIONES DE GUARDIA
+    Descripción: Implementar validaciones en backend y frontend
+    Validaciones backend:
+      - No asignar mismo bombero a dos turnos el mismo día
+        SQL: SELECT COUNT(*) FROM guard_shifts WHERE personnel_id = ? AND date = ?
+      - Mínimo de personal por turno (configurable en settings, default: 3)
+      - Al menos 1 CHOFER certificado por turno
+        SQL: JOIN con personnel_specialties WHERE specialty = 'CHOFER'
+      - Al menos 1 OFICIAL o CABO por turno
+        SQL: JOIN con personnel WHERE rank IN ('OFICIAL', 'CABO', 'CABO 1RO', 'SARGENTO')
+      - No asignar personal en estado LICENCIA o BAJA
+        SQL: JOIN con personnel WHERE status = 'ACTIVO'
+      - No asignar personal con certificado médico vencido
+        SQL: JOIN con personnel WHERE medical_expiry > date('now')
+      - No asignar personal con licencia activa
+        SQL: NOT EXISTS en licenses WHERE status = 'APROBADA' AND date overlap
+    Validaciones frontend:
+      - Mostrar advertencias antes de confirmar asignación
+      - Resaltar conflictos en el calendario
+      - Indicadores de cobertura: verde (completa), amarillo (mínima), rojo (insuficiente)
+
+B3. SISTEMA DE ROTACIÓN AUTOMÁTICA DE GUARDIAS
+    Descripción: Generar cronograma de guardias automáticamente
+    Nueva tabla:
+      CREATE TABLE rotation_config (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        min_per_shift INTEGER DEFAULT 3,
+        require_chofer BOOLEAN DEFAULT 1,
+        require_oficial BOOLEAN DEFAULT 1,
+        shift_types TEXT DEFAULT 'MAÑANA,TARDE,NOCHE',
+        exclude_weekends BOOLEAN DEFAULT 0,
+        balance_strategy TEXT DEFAULT 'EQUITATIVO' -- EQUITATIVO, POR_ANTIGÜEDAD, POR_ESPECIALIDAD
+      );
+    Algoritmo de distribución:
+      1. Obtener lista de personal ACTIVO con especialidades
+      2. Contar guardias asignadas en el mes actual para cada bombero
+      3. Ordenar por menor cantidad de guardias (los que menos tuvieron, más asignan)
+      4. Distribuir en turnos respetando:
+         a. Especialidades mínimas por turno (chofer, oficial)
+         b. Licencias y francos vigentes
+         c. No asignar turnos consecutivos al mismo bombero
+         d. Balancear guardias nocturnas equitativamente
+      5. Generar cronograma completo para el mes
+      6. Permitir ajustes manuales después de la generación
+      7. Notificar a cada bombero su asignación
+    Endpoint:
+      POST /api/guard-shifts/auto-generate
+      Body: { month, year, min_per_shift, specialties_required, balance_strategy }
+    Controles adicionales:
+      - Preview antes de confirmar (dry-run)
+      - Regenerar selectivamente (solo turnos vacantes)
+      - Manual override para ajustes puntuales
+      - Log de cada generación automática
+
+B4. NOTIFICACIONES DE GUARDIA
+    Descripción: Notificar al personal sobre sus asignaciones de guardia
+    Eventos de notificación:
+      1. Guardia asignada → notificar al bombero
+      2. Guardia modificada → notificar cambio
+      3. Guardia cancelada → notificar cancelación
+      4. Recordatorio 24h antes del turno
+      5. Alerta 15 min después del inicio si no se presentó (no-show)
+      6. Recordatorio de certificado médico por vencer
+    Canales:
+      - Notificación in-app (badge + panel)
+      - Email (usando nodemailer ya instalado)
+      - WhatsApp (mejorar el actual wa.me o integrar API Business)
+    Implementación:
+      - Usar node-cron (ya instalado) para recordatorios programados
+      - Cola de notificaciones con reintentos
+      - Registro de notificaciones enviadas en tabla notification_log
+
+B5. NOVEDADES EN TIEMPO REAL DURANTE LA GUARDIA
+    Descripción: Convertir la libreta estática en un timeline interactivo
+    Tipos de novedad:
+      - NOVEDAD → comentario general
+      - SALIDA → despacho de unidad (auto-crea incidencia)
+      - REGRESO → regreso de unidad (auto-actualiza incidencia)
+      - VISITA → registro de visita al cuartel
+      - AVISO → aviso importante (corte de agua, alerta climática, etc.)
+      - MANTENIMIENTO → tarea de mantenimiento durante la guardia
+      - PARTE → parte de novedades periódico
+    Funcionalidades:
+      - Cada novedad tiene timestamp automático
+      - Se pueden agregar comentarios/hilos a cada novedad
+      - Auto-link con incidencias cuando tipo = SALIDA/REGRESO
+      - Notas de voz (grabación desde el navegador)
+      - Adjuntar imágenes (fotos del lugar del siniestro)
+      - Al cerrar turno → genera resumen automático con todas las novedades
+
+B6. VISTAS DE CALENDARIO MEJORADAS
+    Descripción: Agregar múltiples vistas al calendario de guardias
+    Vistas a implementar:
+      1. Vista diaria: detalle completo del turno actual con personal asignado
+      2. Vista semanal: planificación de la semana con turnos y cobertura
+      3. Vista mensual: la actual, mejorada con más info por día
+      4. Vista de cumplimiento: gráficos de % de guardias cubiertas vs vacantes
+      5. Vista por personal: guardias de cada bombero en el mes
+    Mejoras generales:
+      - Filtros: por personal, por tipo de turno, por estado, por especialidad
+      - Drag & drop para reasignar guardias
+      - Colores por estado: verde (completa), amarillo (mínima), rojo (vacante)
+      - Resumen semanal/mensual exportable
+      - Botón de "generar turno" desde el día seleccionado
+
+--- C. ALERTAS — Propuestas Prioritarias ---
+
+C1. SISTEMA DE ALERTAS UNIFICADO
+    Descripción: Crear infraestructura completa de alertas
+    Nueva tabla:
+      CREATE TABLE alerts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT,        -- VENCIMIENTO, GUARDIA, MANTENIMIENTO, EMERGENCIA, SISTEMA
+        severity TEXT,    -- INFO, WARNING, CRITICAL, EMERGENCY
+        title TEXT,
+        description TEXT,
+        source_module TEXT, -- PERSONAL, FLOTA, GUARDIA, DOCUMENTOS, FINANZAS
+        target_user_id INTEGER, -- NULL = global, específico = dirigido
+        is_read BOOLEAN DEFAULT 0,
+        is_resolved BOOLEAN DEFAULT 0,
+        action_url TEXT,  -- link a la acción correspondiente (/personal/5, /flota, etc.)
+        related_entity_id INTEGER,
+        related_entity_type TEXT, -- PERSONNEL, FLEET, DOCUMENT, GUARD_SHIFT, INCIDENT
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        resolved_at DATETIME,
+        resolved_by TEXT,
+        FOREIGN KEY(target_user_id) REFERENCES users(id)
+      );
+    Endpoints:
+      - GET /api/alerts → listar alertas con filtros (severity, is_read, type, source_module)
+      - GET /api/alerts/count → contar no leídas (para badge)
+      - PATCH /api/alerts/:id/read → marcar como leída
+      - PATCH /api/alerts/:id/resolve → marcar como resuelta
+      - PATCH /api/alerts/read-all → marcar todas como leídas
+    Frontend:
+      - Badge con contador en el ícono de campana del header
+      - Panel desplegable con lista de alertas
+      - Filtrado por severidad y módulo
+      - Click en alerta → navegar a la acción correspondiente (action_url)
+      - Indicadores de color por severidad
+
+C2. MOTOR DE ALERTAS AUTOMÁTICAS
+    Descripción: Servicio que genera alertas basado en condiciones
+    Implementación con node-cron (ya instalado):
+    Cada 6 horas (0 */6 * * *):
+      - Verificar documentos próximos a vencer (30, 15, 7 días)
+      - Verificar certificados médicos próximos a vencer
+      - Verificar seguros de vehículos próximos a vencer
+      - Verificar licencias médicas que exceden el plazo configurable
+      - Verificar especialidades/certificaciones próximas a vencer
+    Cada hora (0 * * * *):
+      - Verificar guardias sin personal suficiente para las próximas 24h
+      - Verificar personal que no se presentó a guardia programada
+      - Verificar vehículos con mantenimiento vencido por kilometraje
+      - Verificar incidencias activas sin atención por más de X minutos
+    Cada 15 minutos (*/15 * * * *):
+      - Verificar incidencias activas que requieren escalamiento
+    En tiempo real (vía WebSocket cuando se implemente):
+      - Nueva incidencia → alerta a todos los operadores
+      - Cambio de estado de incidencia
+      - Check-in/out de personal (actualizar dashboard)
+      - Asignación de guardia
+    Función generadora de alertas:
+      async function generateAlert(type, severity, title, description, sourceModule, actionUrl, relatedEntity) {
+        // Verificar si ya existe alerta similar no resuelta (evitar duplicados)
+        // Crear alerta en DB
+        // Enviar notificaciones por canales configurados
+        // Emitir evento WebSocket
+      }
+
+C3. CANALES DE NOTIFICACIÓN MÚLTIPLES
+    Descripción: Implementar notificaciones por múltiples canales
+    Nueva tabla:
+      CREATE TABLE notification_channels (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        channel_type TEXT, -- EMAIL, WHATSAPP, PUSH, IN_APP
+        channel_address TEXT, -- email@domain.com, +549299..., device_token
+        is_enabled BOOLEAN DEFAULT 1,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      );
+    Nueva tabla:
+      CREATE TABLE notification_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_type TEXT,    -- GUARDIA_ASIGNADA, INCIDENCIA_NUEVA, VENCIMIENTO, etc.
+        channel_type TEXT,  -- EMAIL, WHATSAPP, PUSH
+        subject TEXT,       -- asunto (para email)
+        template TEXT,      -- cuerpo con variables {{name}}, {{date}}, {{type}}, etc.
+        is_enabled BOOLEAN DEFAULT 1
+      );
+    Nueva tabla:
+      CREATE TABLE notification_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        alert_id INTEGER,
+        channel_type TEXT,
+        recipient TEXT,
+        status TEXT,    -- SENT, FAILED, PENDING
+        sent_at DATETIME,
+        error_message TEXT,
+        FOREIGN KEY(alert_id) REFERENCES alerts(id)
+      );
+    Implementación por canal:
+      1. IN-APP: Badge + panel de notificaciones (ya existe el ícono Bell)
+         - WebSocket para actualización en tiempo real
+         - Sonido de notificación configurable
+      2. EMAIL: Usar nodemailer (ya instalado)
+         - Configurar SMTP en settings
+         - Templates HTML para cada tipo de evento
+         - Rate limiting para no saturar
+      3. WHATSAPP: Integrar API de WhatsApp Business
+         - Reemplazar el wa.me manual por envío automático
+         - Templates de mensajes aprobados por Meta
+         - O alternativamente: usar Twilio/MessageBird como gateway
+      4. PUSH: Service Worker + Web Push API
+         - Registro de service worker en el navegador
+         - Push subscriptions almacenadas en DB
+         - Notificaciones incluso con la app cerrada
+
+C4. SISTEMA DE ESCALAMIENTO
+    Descripción: Escalar alertas no atendidas automáticamente
+    Nueva tabla:
+      CREATE TABLE escalation_rules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        alert_type TEXT,
+        severity TEXT,
+        level INTEGER,      -- 1, 2, 3
+        delay_minutes INTEGER, -- minutos antes de escalar
+        target_role TEXT,   -- OPERADOR, OFICIAL, COMANDANTE
+        notify_channel TEXT, -- IN_APP, EMAIL, WHATSAPP, PUSH
+        is_enabled BOOLEAN DEFAULT 1
+      );
+    Reglas de ejemplo:
+      - Incidencia activa > 15 min sin respuesta → escalar a Jefe de Turno (email + WhatsApp)
+      - Incidencia activa > 30 min sin respuesta → escalar a Comandante (todos los canales)
+      - Guardia sin personal > 30 min antes del inicio → escalar a Oficial de servicio
+      - Documento vencido > 7 días sin renovación → escalar a Administración
+      - Vehículo con mantenimiento vencido > 48h → escalar a Jefe de Flota
+    Flujo de escalamiento:
+      1. Alerta generada → notificar al responsable directo (nivel 1)
+      2. Si no se atiende en X minutos → escalar al siguiente nivel (nivel 2)
+      3. Si no se atiende en Y minutos más → escalar al nivel máximo (nivel 3)
+      4. Registrar cada intento de notificación en notification_log
+      5. Cada escalamiento genera nueva alerta con severidad incrementada
+
+C5. CENTRO DE DESPACHO DE EMERGENCIAS MEJORADO
+    Descripción: Flujo completo de despacho con asignación automática
+    Flujo de despacho mejorado:
+      1. Crear incidencia → auto-calcular unidades necesarias por tipo
+         - INCENDIO ESTRUCTURAL → mínimo 2 autobombas + 1 autoescalera
+         - INCENDIO FORESTAL → mínimo 1 autobomba + vehículo todo terreno
+         - RESCATE → vehículo de rescate + ambulancia
+         - HAZMAT → vehículo HazMat + equipo especializado
+      2. Asignar unidades automáticamente (las disponibles y operativas)
+      3. Asignar personal automáticamente:
+         - Personal actualmente en guardia
+         - Con especialidades requeridas
+         - Sin impedimentos médicos
+      4. Despacho automático por WhatsApp/Email a los asignados
+      5. Tracking en tiempo real (WebSocket):
+         - Hora de salida de cada unidad
+         - Hora de llegada al lugar
+         - Personal desplegado
+      6. Cierre de incidencia con informe automático:
+         - Tiempo total de respuesta
+         - Recursos utilizados
+         - Personal participante
+         - Costos estimados (combustible, horas hombre)
+      7. Estadísticas post-evento:
+         - Tiempo de respuesta promedio
+         - Comparativa con incidentes similares
+         - Feedback del oficial a cargo
+    Nuevos endpoints:
+      - POST /api/incidents/:id/dispatch → despachar con asignación automática
+      - PATCH /api/incidents/:id/units → asignar/desasignar unidades
+      - PATCH /api/incidents/:id/personnel → asignar/desasignar personal
+      - PATCH /api/incidents/:id/close → cerrar con informe
+      - GET /api/incidents/:id/report → informe completo del incidente
+
+--- D. MEJORAS GENERALES DE ARQUITECTURA ---
+
+D1. REFACTORIZACIÓN DEL BACKEND
+    Descripción: Separar server.ts en módulos organizados
+    Estructura propuesta:
+      /server
+        index.ts              → punto de entrada
+        /routes               → definición de rutas
+          index.ts            → router principal
+          auth.routes.ts      → rutas de autenticación
+          personnel.routes.ts → rutas de personal
+          incidents.routes.ts → rutas de incidencias
+          fleet.routes.ts     → rutas de flota
+          guard.routes.ts     → rutas de guardia
+          alerts.routes.ts    → rutas de alertas
+          settings.routes.ts  → rutas de configuración
+        /controllers          → lógica de cada endpoint
+          auth.controller.ts
+          personnel.controller.ts
+          incidents.controller.ts
+          fleet.controller.ts
+          guard.controller.ts
+          alerts.controller.ts
+          settings.controller.ts
+        /services             → lógica de negocio reutilizable
+          auth.service.ts
+          personnel.service.ts
+          incidents.service.ts
+          alert.service.ts
+          notification.service.ts
+          rotation.service.ts
+        /models               → queries a la DB
+          database.ts         → conexión y configuración
+          personnel.model.ts
+          incidents.model.ts
+          fleet.model.ts
+          guard.model.ts
+          alerts.model.ts
+        /middleware            → middleware de Express
+          auth.middleware.ts   → verificación de JWT
+          validate.middleware.ts → validación con Zod
+          error.middleware.ts  → manejo centralizado de errores
+          audit.middleware.ts  → registro automático de acciones
+        /types                → interfaces compartidas
+          personnel.types.ts
+          incidents.types.ts
+          fleet.types.ts
+          guard.types.ts
+          alerts.types.ts
+          api.types.ts
+        /utils                → funciones auxiliares
+          date.utils.ts
+          format.utils.ts
+          constants.ts
+
+D2. AUTENTICACIÓN REAL CON JWT
+    Descripción: Implementar autenticación completa
+    Cambios en la base de datos:
+      - Corregir tabla users para incluir password (hash bcrypt) y campos correctos
+      - Agregar campo refresh_token y last_token_date
+    Endpoints de autenticación:
+      - POST /api/auth/login → validar contra DB, generar access_token (15min) + refresh_token (7d)
+      - POST /api/auth/refresh → renovar access_token con refresh_token
+      - POST /api/auth/logout → invalidar tokens
+      - POST /api/auth/change-password → cambio de contraseña
+    Middleware de autenticación:
+      - authMiddleware: verificar JWT en header Authorization: Bearer <token>
+      - roleMiddleware(roles): verificar que el usuario tiene el rol requerido
+      - permissionMiddleware(module): verificar permiso sobre un módulo
+    Frontend:
+      - Almacenar token en httpOnly cookie (más seguro que localStorage)
+      - Interceptor de Axios para agregar token a cada request
+      - Interceptor para renovar token automáticamente cuando expira
+      - Redirigir a login cuando la sesión expira
+
+D3. VALIDACIÓN CON ZOD
+    Descripción: Implementar validación de input en todos los endpoints
+    Schemas de validación:
+      const personnelSchema = z.object({
+        name: z.string().min(3).max(100),
+        rank: z.enum(['ASPIRANTE', 'BOMBERO', 'CABO', 'CABO 1RO', 'SARGENTO', 'SARGENTO 1RO', 'OFICIAL', 'SUBCOMANDANTE', 'COMANDANTE']),
+        dni: z.string().regex(/^\d{7,8}$/),
+        phone: z.string().min(8).max(20),
+        email: z.string().email().optional(),
+        birthdate: z.string().date(),
+        blood_group: z.enum(['A+', 'A-', 'B+', 'B-', '0+', '0-', 'AB+', 'AB-']),
+        status: z.enum(['ACTIVO', 'RESERVA', 'LICENCIA', 'RETIRADO', 'BAJA']).default('ACTIVO')
+      });
+      const incidentSchema = z.object({
+        type: z.enum(['INCENDIO ESTRUCTURAL', 'INCENDIO FORESTAL', 'RESCATE', 'HAZMAT', 'SINIESTRO VIAL', 'FUGA DE GAS', 'INUNDACIÓN', 'OTRO']),
+        description: z.string().min(5).max(500),
+        location: z.string().min(3).max(200),
+        status: z.enum(['ACTIVO', 'EN PROCESO', 'CONTROLADO', 'FINALIZADO']).default('ACTIVO')
+      });
+      const guardShiftSchema = z.object({
+        personnel_id: z.number().int().positive(),
+        date: z.string().date(),
+        shift_type: z.enum(['MAÑANA', 'TARDE', 'NOCHE'])
+      });
+    Middleware de validación:
+      function validateBody(schema) {
+        return (req, res, next) => {
+          const result = schema.safeParse(req.body);
+          if (!result.success) {
+            return res.status(400).json({ error: 'Validation failed', details: result.error.errors });
+          }
+          req.body = result.data;
+          next();
+        };
+      }
+    Beneficio adicional:
+      - Tipos TypeScript derivados automáticamente: type Personnel = z.infer<typeof personnelSchema>
+      - Compartir schemas entre frontend y backend
+
+D4. MANEJO DE ERRORES CENTRALIZADO
+    Descripción: Sistema consistente de manejo de errores
+    Clase de error personalizada:
+      class AppError extends Error {
+        constructor(public statusCode: number, public message: string, public details?: any) {
+          super(message);
+        }
+      }
+    Middleware global:
+      function errorHandler(err, req, res, next) {
+        if (err instanceof AppError) {
+          return res.status(err.statusCode).json({
+            success: false,
+            error: err.message,
+            details: err.details
+          });
+        }
+        // Error no controlado
+        console.error('Unhandled error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'Error interno del servidor'
+        });
+      }
+    Formato de respuesta estandarizado:
+      Éxito: { success: true, data: {...}, message: 'Operación exitosa' }
+      Error: { success: false, error: 'Mensaje de error', details: [...] }
+
+D5. REAL-TIME CON WEBSOCKET
+    Descripción: Implementar Socket.io para actualizaciones en tiempo real
+    Eventos a implementar:
+      - incident:new → nueva incidencia (alerta a todos)
+      - incident:update → cambio de estado de incidencia
+      - attendance:checkin → personal ingresó al cuartel
+      - attendance:checkout → personal salió del cuartel
+      - guard:shift-update → cambio en guardia
+      - alert:new → nueva alerta generada
+      - alert:resolved → alerta resuelta
+      - dashboard:stats → actualizar estadísticas
+      - fleet:status → cambio de estado de vehículo
+    Implementación:
+      - Socket.io server en puerto separado (ej: 3001)
+      - Autenticación de WebSocket con JWT
+      - Rooms por rol (admin, oficial, operador)
+      - Reconexión automática en el frontend
+    Nota: Requiere mini-service según las reglas del entorno de desarrollo
+
+D6. DISEÑO RESPONSIVE
+    Descripción: Adaptar la interfaz para dispositivos móviles
+    Cambios necesarios:
+      - Sidebar: implementar menú hamburguesa para mobile (< 768px)
+      - Sidebar: modo colapsable con solo iconos en tablet
+      - Cards de personal: vista de lista en mobile en vez de grid
+      - Tablas: scroll horizontal en pantallas pequeñas
+      - Modals: fullscreen en mobile
+      - Header: ocultar barra de búsqueda en mobile, reemplazar con ícono
+      - Dashboard: cards apiladas verticalmente en mobile
+      - Calendario: vista de lista en mobile en vez de grid
+      - Touch targets: mínimo 44px para elementos interactivos
+
+D7. CORRECCIÓN DE BUGS EXISTENTES
+    Descripción: Corregir problemas encontrados en el código actual
+    Bugs a corregir:
+      - Flota.tsx: const aintenance, setMaintenance] → const [maintenance, setMaintenance]
+      - server.ts: tabla users duplicada → eliminar la segunda definición o hacer merge
+      - Guardia.tsx: "Guardia Programada: 08" → calcular valor real desde API
+      - Sidebar.tsx: "Of. Rodriguez" hardcodeado → obtener del usuario autenticado
+      - Header: barra de búsqueda sin funcionalidad → implementar búsqueda global
+      - server.ts: /api/finances/balance hardcodeado → calcular desde tabla payments
+      - server.ts: /api/alerts/vencimientos vacío → implementar lógica real
+      - server.ts: /api/guardia vacío → conectar con duty_log
+      - Home.tsx: alerts siempre 0 → conectar con sistema de alertas real
+      - Incidencias.tsx: "Prioridad: Alta" hardcodeado → agregar campo priority
+
+================================================================================
+PRIORIZACIÓN DE IMPLEMENTACIÓN
+================================================================================
+
+PRIORIDAD P0 — CRÍTICO (implementar primero):
+  [D2] Autenticación real con JWT — Sin esto, el sistema no es usable en producción
+  [A1] CRUD completo de personal — Sin editar/eliminar, el sistema es solo de consulta
+  [B1] Vincular guardia-asistencia-libreta — Los datos están desconectados
+  [C1] Sistema de alertas unificado — La funcionalidad más visible que está vacía
+  [D7] Corrección de bugs existentes — Error de sintaxis, datos hardcodeados
+
+PRIORIDAD P1 — IMPORTANTE (implementar a continuación):
+  [B2] Validaciones de guardia — Previene errores de asignación
+  [A2] Legajo médico completo — Esencial para cuartel de bomberos
+  [C2] Motor de alertas automáticas — Da valor real al sistema de alertas
+  [D3] Validación con Zod — Protección contra input malicioso/inválido
+  [D1] Refactorización del backend — Facilita todo desarrollo futuro
+  [A4] Historial de licencias — Necesario para gestión de personal real
+
+PRIORIDAD P2 — DESEABLE (implementar cuando P0 y P1 estén listos):
+  [B3] Rotación automática de guardias — Alto valor pero compleja
+  [C3] Canales de notificación múltiple — Alto valor pero requiere integraciones
+  [A3] Sistema de especialidades — Mejora la asignación de guardias
+  [C5] Centro de despacho mejorado — Alto valor pero alta complejidad
+  [C4] Sistema de escalamiento — Complementa el sistema de alertas
+  [A5] Exportación de legajos PDF — Funcionalidad útil para documentación
+
+PRIORIDAD P3 — FUTURO (nice to have):
+  [D6] Diseño responsive — Mejora UX en mobile
+  [D5] WebSocket real-time — Mejora la experiencia pero no es crítico
+  [B4] Notificaciones de guardia — Complementa la rotación
+  [B5] Novedades en tiempo real — Mejora la libreta de guardia
+  [B6] Vistas de calendario mejoradas — Mejor UX del calendario
+  [A6] Fecha de ingreso y antigüedad — Dato complementario
+  [A7] Filtros y búsqueda avanzada — Mejora la usabilidad
+  [D4] Manejo de errores centralizado — Mejora la calidad del código
+
+================================================================================
+RESUMEN EJECUTIVO
+================================================================================
+
+El sistema SGP-B Chimpay v2.0.4 tiene una base funcional sólida con un diseño
+visual atractivo y una buena cobertura de módulos para la gestión de un cuartel
+de bomberos. Sin embargo, presenta problemas críticos que impiden su uso en
+producción:
+
+1. SEGURIDAD: La autenticación es hardcodeada (admin/admin123), las APIs no
+   tienen protección, y las dependencias de seguridad (JWT, bcrypt) están
+   instaladas pero sin implementar.
+
+2. DATOS DESCONECTADOS: La libreta de guardia, la asistencia y el calendario
+   son módulos separados sin relación entre sí. No se puede saber quién estaba
+   de servicio durante un incidente.
+
+3. FUNCIONALIDADES INCOMPLETAS: Las alertas están vacías, el balance de
+   finanzas es hardcodeado, el CRUD de personal es solo Create, y el mapa
+   es un mock visual.
+
+Las 3 mejoras de mayor impacto serían:
+
+  a) AUTENTICACIÓN REAL + middleware de auth
+     → Sin esto, el sistema no es seguro ni usable en producción
+
+  b) UNIFICAR EL MÓDULO DE GUARDIAS
+     → Conectar libreta, asistencia y calendario en un flujo coherente
+     → Agregar validaciones y rotación automática
+
+  c) IMPLEMENTAR EL SISTEMA DE ALERTAS
+     → Es la funcionalidad más visible que está completamente vacía
+     → Motor de alertas automáticas + notificaciones multi-canal
+
+Con estas 3 mejoras, el sistema pasaría de ser un prototipo funcional a una
+herramienta operativa real para un cuartel de bomberos.
+
+================================================================================
+FIN DEL PROMPT DE ANÁLISIS
+================================================================================
