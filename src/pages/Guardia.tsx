@@ -39,7 +39,7 @@ export default function Guardia() {
   const [newEntry, setNewEntry] = useState({ officer_in_charge: '', observations: '', shift: 'DIURNA' });
 
   const [showCheckInModal, setShowCheckInModal] = useState(false);
-  const [checkInData, setCheckInData] = useState({ personnel_id: 0, type: 'GUARDIA', observations: '' });
+  const [checkInData, setCheckInData] = useState({ personnel_id: 0, type: 'GUARDIA', observations: '', recorded_by: '' });
 
   const fetchData = async () => {
     try {
@@ -100,11 +100,14 @@ export default function Guardia() {
   };
 
   const handleCheckOut = async (id: number) => {
+    const operator = prompt('Nombre del operador que registra la salida:');
+    if (!operator) return;
+    
     try {
       const res = await fetch(`/api/attendance/check-out/${id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ observations: 'Salida de cuartel' })
+        body: JSON.stringify({ observations: 'Salida de cuartel', recorded_out_by: operator })
       });
       if (res.ok) {
         toast.success('Egreso registrado');
@@ -113,6 +116,31 @@ export default function Guardia() {
     } catch (err) {
       toast.error('Error al registrar egreso');
     }
+  };
+
+  const exportAttendance = () => {
+    const headers = ['Bombero', 'Jerarquia', 'Ingreso', 'Egreso', 'Tipo', 'Operador Entrada', 'Operador Salida'];
+    const rows = attendance.map(a => [
+      a.personnel_name,
+      a.personnel_rank,
+      new Date(a.check_in).toLocaleString(),
+      a.check_out ? new Date(a.check_out).toLocaleString() : 'ACTIVO',
+      a.type,
+      (a as any).recorded_by || 'N/A',
+      (a as any).recorded_out_by || 'N/A'
+    ]);
+    
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + headers.join(",") + "\n"
+      + rows.map(e => e.join(",")).join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `asistencia_bomberos_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const activeAttendance = attendance.filter(a => !a.check_out);
@@ -244,8 +272,10 @@ export default function Guardia() {
                       <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Guardia Programada</span>
                       <span className="text-2xl font-black text-white italic">08</span>
                    </div>
-                   <button className="w-full h-12 bg-[#FFD43B] text-[#1D2124] font-black uppercase text-[10px] rounded-xl italic tracking-widest shadow-[0_4px_0_0_#FAB005] hover:translate-y-[2px] transition-all">
-                      GENERAR LISTADO PDF
+                   <button 
+                     onClick={exportAttendance}
+                     className="w-full h-12 bg-[#FFD43B] text-[#1D2124] font-black uppercase text-[10px] rounded-xl italic tracking-widest shadow-[0_4px_0_0_#FAB005] hover:translate-y-[2px] transition-all">
+                      EXPORTAR HISTORIAL CSV
                    </button>
                 </div>
              </div>
@@ -427,6 +457,17 @@ export default function Guardia() {
                       className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-bold uppercase"
                       value={checkInData.observations}
                       onChange={e => setCheckInData({...checkInData, observations: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Operador Responsable</label>
+                    <input 
+                      type="text"
+                      required
+                      placeholder="Nombre de quien registra..."
+                      className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-bold uppercase shadow-sm focus:border-[#FFD43B] outline-none"
+                      value={checkInData.recorded_by}
+                      onChange={e => setCheckInData({...checkInData, recorded_by: e.target.value})}
                     />
                   </div>
                 </div>

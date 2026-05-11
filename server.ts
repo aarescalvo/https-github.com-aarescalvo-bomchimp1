@@ -57,7 +57,12 @@ async function startServer() {
       status TEXT DEFAULT 'OPERATIVO',
       last_maintenance DATETIME,
       patent TEXT,
-      year INTEGER
+      year INTEGER,
+      engine_number TEXT,
+      kilometers INTEGER DEFAULT 0,
+      fuel_type TEXT,
+      last_service_mileage INTEGER DEFAULT 0,
+      notes TEXT
     );
 
     CREATE TABLE IF NOT EXISTS personnel_records (
@@ -126,7 +131,20 @@ async function startServer() {
       check_out DATETIME,
       type TEXT DEFAULT 'GUARDIA', -- 'GUARDIA', 'INCENDIO', 'LIMPIEZA'
       observations TEXT,
+      recorded_by TEXT,
+      recorded_out_by TEXT,
       FOREIGN KEY(personnel_id) REFERENCES personnel(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS fuel_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      unit_id TEXT,
+      date DATETIME DEFAULT CURRENT_TIMESTAMP,
+      kilometers INTEGER,
+      amount_liters REAL,
+      cost REAL,
+      recorded_by TEXT,
+      FOREIGN KEY(unit_id) REFERENCES fleet(unit_id)
     );
 
     CREATE TABLE IF NOT EXISTS documents (
@@ -177,6 +195,13 @@ async function startServer() {
   try { db.exec("ALTER TABLE personnel ADD COLUMN blood_group TEXT;"); } catch(e) {}
   try { db.exec("ALTER TABLE fleet ADD COLUMN patent TEXT;"); } catch(e) {}
   try { db.exec("ALTER TABLE fleet ADD COLUMN year INTEGER;"); } catch(e) {}
+  try { db.exec("ALTER TABLE fleet ADD COLUMN engine_number TEXT;"); } catch(e) {}
+  try { db.exec("ALTER TABLE fleet ADD COLUMN kilometers INTEGER DEFAULT 0;"); } catch(e) {}
+  try { db.exec("ALTER TABLE fleet ADD COLUMN fuel_type TEXT;"); } catch(e) {}
+  try { db.exec("ALTER TABLE fleet ADD COLUMN last_service_mileage INTEGER DEFAULT 0;"); } catch(e) {}
+  try { db.exec("ALTER TABLE fleet ADD COLUMN notes TEXT;"); } catch(e) {}
+  try { db.exec("ALTER TABLE attendance ADD COLUMN recorded_by TEXT;"); } catch(e) {}
+  try { db.exec("ALTER TABLE attendance ADD COLUMN recorded_out_by TEXT;"); } catch(e) {}
 
   app.use(express.json());
   app.use(cookieParser());
@@ -422,13 +447,56 @@ async function startServer() {
 
   app.post("/api/fleet", (req, res) => {
     try {
-      const { unit_id, type, model, patent, year, status } = req.body;
-      const stmt = db.prepare('INSERT INTO fleet (unit_id, type, model, patent, year, status) VALUES (?, ?, ?, ?, ?, ?)');
-      const info = stmt.run(unit_id, type, model, patent, year, status || 'OPERATIVO');
+      const { unit_id, type, model, patent, year, status, engine_number, kilometers, fuel_type, last_service_mileage, notes } = req.body;
+      const stmt = db.prepare('INSERT INTO fleet (unit_id, type, model, patent, year, status, engine_number, kilometers, fuel_type, last_service_mileage, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+      const info = stmt.run(unit_id, type, model, patent, year, status || 'OPERATIVO', engine_number, kilometers, fuel_type, last_service_mileage, notes);
       db.prepare('INSERT INTO audit_log (action, details) VALUES (?, ?)').run('ALTA_FLOTA', `Unidad: ${unit_id}`);
       res.json({ id: info.lastInsertRowid });
     } catch (err) {
+      console.error(err);
       res.status(500).json({ error: "Error creating fleet" });
+    }
+  });
+
+  app.patch("/api/fleet/:id", (req, res) => {
+    try {
+      const { status, kilometers, last_service_mileage, notes } = req.body;
+      const stmt = db.prepare(`
+        UPDATE fleet 
+        SET status = COALESCE(?, status),
+            kilometers = COALESCE(?, kilometers),
+            last_service_mileage = COALESCE(?, last_service_mileage),
+            notes = COALESCE(?, notes)
+        WHERE id = ?
+      `);
+      stmt.run(status, kilometers, last_service_mileage, notes, req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Error updating fleet" });
+    }
+  });
+
+  app.get("/api/fleet/fuel", (req, res) => {
+    try {
+      const data = db.prepare('SELECT * FROM fuel_log ORDER BY date DESC').all();
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: "Error fetch fuel" });
+    }
+  });
+
+  app.post("/api/fleet/fuel", (req, res) => {
+    try {
+      const { unit_id, kilometers, amount_liters, cost, recorded_by } = req.body;
+      const stmt = db.prepare('INSERT INTO fuel_log (unit_id, kilometers, amount_liters, cost, recorded_by) VALUES (?, ?, ?, ?, ?)');
+      const info = stmt.run(unit_id, kilometers, amount_liters, cost, recorded_by);
+      
+      // Update fleet kilometers
+      db.prepare('UPDATE fleet SET kilometers = ? WHERE unit_id = ?').run(kilometers, unit_id);
+      
+      res.json({ id: info.lastInsertRowid });
+    } catch (err) {
+      res.status(500).json({ error: "Error creating fuel log" });
     }
   });
 
@@ -562,9 +630,9 @@ async function startServer() {
 
   app.post("/api/attendance/check-in", (req, res) => {
     try {
-      const { personnel_id, type, observations } = req.body;
-      const stmt = db.prepare('INSERT INTO attendance (personnel_id, type, observations) VALUES (?, ?, ?)');
-      const info = stmt.run(personnel_id, type, observations);
+      const { personnel_id, type, observations, recorded_by } = req.body;
+      const stmt = db.prepare('INSERT INTO attendance (personnel_id, type, observations, recorded_by) VALUES (?, ?, ?, ?)');
+      const info = stmt.run(personnel_id, type, observations, recorded_by);
       res.json({ id: info.lastInsertRowid });
     } catch (err) {
       res.status(500).json({ error: "Error check-in" });
@@ -573,13 +641,14 @@ async function startServer() {
 
   app.post("/api/attendance/check-out/:id", (req, res) => {
     try {
-      const { observations } = req.body;
+      const { observations, recorded_out_by } = req.body;
       db.prepare(`
         UPDATE attendance 
         SET check_out = CURRENT_TIMESTAMP, 
-            observations = COALESCE(?, observations)
+            observations = COALESCE(?, observations),
+            recorded_out_by = ?
         WHERE id = ?
-      `).run(observations, req.params.id);
+      `).run(observations, recorded_out_by, req.params.id);
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: "Error check-out" });

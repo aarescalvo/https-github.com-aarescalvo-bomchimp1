@@ -11,6 +11,11 @@ interface Vehicle {
   last_maintenance: string;
   patent?: string;
   year?: number;
+  engine_number?: string;
+  kilometers: number;
+  fuel_type?: string;
+  last_service_mileage: number;
+  notes?: string;
 }
 
 interface MaintenanceRecord {
@@ -23,39 +28,61 @@ interface MaintenanceRecord {
   cost: number;
 }
 
+interface FuelRecord {
+  id: number;
+  unit_id: string;
+  date: string;
+  kilometers: number;
+  amount_liters: number;
+  cost: number;
+  recorded_by: string;
+}
+
 export default function Flota() {
   const [fleet, setFleet] = useState<Vehicle[]>([]);
   const [maintenance, setMaintenance] = useState<MaintenanceRecord[]>([]);
+  const [fuelLogs, setFuelLogs] = useState<FuelRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'UNIDADES' | 'MANTENIMIENTO'>('UNIDADES');
+  const [activeTab, setActiveTab] = useState<'UNIDADES' | 'MANTENIMIENTO' | 'COMBUSTIBLE'>('UNIDADES');
   
   const [showUnitModal, setShowUnitModal] = useState(false);
-  const [newUnit, setNewUnit] = useState({ unit_id: '', type: 'AUTOBOMBA', model: '', patent: '', year: new Date().getFullYear() });
+  const [newUnit, setNewUnit] = useState({ 
+    unit_id: '', 
+    type: 'AUTOBOMBA', 
+    model: '', 
+    patent: '', 
+    year: new Date().getFullYear(),
+    engine_number: '',
+    kilometers: 0,
+    fuel_type: 'DIESEL',
+    notes: '' 
+  });
 
   const [showMaintModal, setShowMaintModal] = useState(false);
   const [newMaint, setNewMaint] = useState({ unit_id: '', type: 'PREVENTIVO', description: '', mileage: 0, cost: 0 });
 
-  const fetchFleet = async () => {
+  const [showFuelModal, setShowFuelModal] = useState(false);
+  const [newFuel, setNewFuel] = useState({ unit_id: '', kilometers: 0, amount_liters: 0, cost: 0, recorded_by: '' });
+
+  const fetchData = async () => {
     try {
-      const res = await fetch('/api/fleet');
-      const data = await res.json();
-      setFleet(data);
+      const [resFleet, resMaint, resFuel] = await Promise.all([
+        fetch('/api/fleet'),
+        fetch('/api/fleet/maintenance'),
+        fetch('/api/fleet/fuel')
+      ]);
+      setFleet(await resFleet.json());
+      setMaintenance(await resMaint.json());
+      setFuelLogs(await resFuel.json());
     } catch (err) {
-      toast.error('Error al cargar flota');
+      toast.error('Error al cargar datos');
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchMaintenance = async () => {
-    const res = await fetch('/api/fleet/maintenance');
-    const data = await res.json();
-    setMaintenance(data);
-  };
-
   useEffect(() => {
-    fetchFleet();
-    fetchMaintenance();
+    fetchData();
   }, []);
 
   const handleCreateUnit = async (e: React.FormEvent) => {
@@ -69,11 +96,40 @@ export default function Flota() {
       if (res.ok) {
         toast.success('Unidad registrada');
         setShowUnitModal(false);
-        setNewUnit({ unit_id: '', type: 'AUTOBOMBA', model: '', patent: '', year: new Date().getFullYear() });
-        fetchFleet();
+        setNewUnit({ 
+          unit_id: '', 
+          type: 'AUTOBOMBA', 
+          model: '', 
+          patent: '', 
+          year: new Date().getFullYear(),
+          engine_number: '',
+          kilometers: 0,
+          fuel_type: 'DIESEL',
+          notes: '' 
+        });
+        fetchData();
       }
     } catch (err) {
       toast.error('Error al registrar unidad');
+    }
+  };
+
+  const handleCreateFuel = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/fleet/fuel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newFuel)
+      });
+      if (res.ok) {
+        toast.success('Carga registrada');
+        setShowFuelModal(false);
+        setNewFuel({ unit_id: '', kilometers: 0, amount_liters: 0, cost: 0, recorded_by: '' });
+        fetchData();
+      }
+    } catch (err) {
+      toast.error('Error al registrar carga');
     }
   };
 
@@ -89,12 +145,36 @@ export default function Flota() {
         toast.success('Mantenimiento registrado');
         setShowMaintModal(false);
         setNewMaint({ unit_id: '', type: 'PREVENTIVO', description: '', mileage: 0, cost: 0 });
-        fetchMaintenance();
-        fetchFleet();
+        fetchData();
       }
     } catch (err) {
       toast.error('Error al registrar mantenimiento');
     }
+  };
+
+  const exportFleetReport = () => {
+    const headers = ['Unidad', 'Tipo', 'Modelo', 'Patente', 'KM Actual', 'Proximo Service', 'Status'];
+    const rows = fleet.map(v => [
+      v.unit_id,
+      v.type,
+      v.model,
+      v.patent || 'S/D',
+      v.kilometers,
+      v.last_service_mileage + 10000,
+      v.status
+    ]);
+    
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + headers.join(",") + "\n"
+      + rows.map(e => e.join(",")).join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `reporte_flota.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
@@ -105,6 +185,12 @@ export default function Flota() {
           <p className="text-gray-400 text-xs font-bold uppercase tracking-widest">Control de unidades y mantenimiento preventivo</p>
         </div>
         <div className="flex gap-4">
+          <button 
+             onClick={exportFleetReport}
+             className="px-6 py-3 bg-blue-50 text-blue-600 font-black rounded-xl hover:bg-blue-100 transition-all flex items-center gap-2 uppercase text-xs"
+          >
+             Exportar Flota
+          </button>
           <button 
             onClick={() => setShowUnitModal(true)}
             className="px-6 py-3 bg-[#FFD43B] text-[#1D2124] font-black rounded-xl shadow-[0_4px_0_0_#FAB005] hover:translate-y-[2px] transition-all flex items-center gap-2 uppercase text-xs"
@@ -133,6 +219,12 @@ export default function Flota() {
         >
           Historial Mantenimiento
         </button>
+        <button 
+          onClick={() => setActiveTab('COMBUSTIBLE')}
+          className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'COMBUSTIBLE' ? 'bg-[#FFD43B] text-[#1D2124]' : 'text-gray-400 hover:text-[#1D2124]'}`}
+        >
+          Control Combustible
+        </button>
       </div>
 
       {activeTab === 'UNIDADES' ? (
@@ -154,31 +246,36 @@ export default function Flota() {
                 <div className="space-y-6 flex-1">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="p-4 bg-gray-50 rounded-2xl">
-                      <p className="text-[8px] font-black text-gray-400 uppercase mb-1">Patente / Año</p>
-                      <p className="text-[10px] font-black text-[#1D2124] uppercase truncate">{v.patent || 'S/D'} • {v.year || 'S/D'}</p>
+                      <p className="text-[8px] font-black text-gray-400 uppercase mb-1">Patente</p>
+                      <p className="text-[10px] font-black text-[#1D2124] uppercase truncate">{v.patent || 'S/D'}</p>
                     </div>
                     <div className="p-4 bg-gray-50 rounded-2xl">
-                      <p className="text-[8px] font-black text-gray-400 uppercase mb-1">Último Service</p>
-                      <p className="text-[10px] font-black text-[#1D2124] uppercase truncate">
-                        {v.last_maintenance ? new Date(v.last_maintenance).toLocaleDateString() : 'SIN DATOS'}
-                      </p>
+                      <p className="text-[8px] font-black text-gray-400 uppercase mb-1">Kilometraje</p>
+                      <p className="text-[10px] font-black text-[#1D2124] uppercase truncate">{v.kilometers.toLocaleString()} KM</p>
                     </div>
+                  </div>
+
+                  <div className="p-4 bg-gray-50 rounded-2xl">
+                      <p className="text-[8px] font-black text-gray-400 uppercase mb-1">Motor / Modelo</p>
+                      <p className="text-[10px] font-black text-[#1D2124] uppercase truncate">{v.engine_number || 'S/D'} • {v.model}</p>
                   </div>
 
                   <div className="space-y-3">
                     <div className="flex items-center justify-between text-[10px] font-black text-gray-400 uppercase">
-                      <div className="flex items-center gap-2"><Gauge size={14} /> Estado de Neumáticos</div>
-                      <span className="text-[#1D2124]">85%</span>
+                      <div className="flex items-center gap-2"><Gauge size={14} /> Próximo Service</div>
+                      <span className="text-[#1D2124]">{v.kilometers} / {v.last_service_mileage + 10000} KM</span>
                     </div>
                     <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="w-[85%] h-full bg-[#FFD43B]" />
+                      <div className={`h-full bg-[#FFD43B]`} style={{ width: `${Math.min(100, (v.kilometers / (v.last_service_mileage + 10000)) * 100)}%` }} />
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3 text-[10px] font-black text-gray-400 uppercase">
-                    <MapPin size={14} />
-                    <span>UBICACIÓN: <span className="text-[#1D2124]">CUARTEL CENTRAL</span></span>
-                  </div>
+                  {v.notes && (
+                      <div className="p-3 bg-yellow-50/50 rounded-xl border border-yellow-100">
+                          <p className="text-[8px] font-black text-yellow-600 uppercase mb-1">Notas de la Unidad</p>
+                          <p className="text-[9px] font-medium text-gray-600 line-clamp-2">{v.notes}</p>
+                      </div>
+                  )}
                 </div>
 
                 <div className="mt-8 pt-6 border-t border-gray-50 grid grid-cols-2 gap-3">
@@ -198,30 +295,30 @@ export default function Flota() {
             </div>
           )}
         </div>
-      ) : (
+      ) : activeTab === 'MANTENIMIENTO' ? (
         <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden">
           <table className="w-full text-left">
             <thead>
-              <tr className="bg-gray-50/50 border-b border-gray-100">
-                <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">Unidad</th>
-                <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">Tipo</th>
-                <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">Kilometraje</th>
-                <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">Fecha</th>
-                <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">Costo</th>
+              <tr className="bg-gray-50/50 border-b border-gray-100 text-[10px] font-black text-gray-400 uppercase">
+                <th className="p-6">Unidad</th>
+                <th className="p-6">Tipo</th>
+                <th className="p-6">KM</th>
+                <th className="p-6">Descripción</th>
+                <th className="p-6 text-right">Costo</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 text-[10px] font-bold">
               {maintenance.map(m => (
                 <tr key={m.id} className="hover:bg-gray-50/30">
-                  <td className="p-6 font-black text-[#1D2124]">UNIDAD {m.unit_id}</td>
+                  <td className="p-6 font-black text-[#1D2124]">{m.unit_id}</td>
                   <td className="p-6">
-                    <span className={`px-2 py-1 rounded inline-block ${m.type === 'PREVENTIVO' ? 'bg-blue-50 text-blue-600' : 'bg-orange-50 text-orange-600'}`}>
+                    <span className={`px-2 py-1 rounded ${m.type === 'PREVENTIVO' ? 'bg-blue-50 text-blue-600' : 'bg-orange-50 text-orange-600'}`}>
                       {m.type}
                     </span>
                   </td>
                   <td className="p-6">{m.mileage.toLocaleString()} KM</td>
-                  <td className="p-6 text-gray-400">{new Date(m.date).toLocaleDateString()}</td>
-                  <td className="p-6 text-[#20C997]">${m.cost}</td>
+                  <td className="p-6 text-gray-400 italic truncate max-w-xs">{m.description}</td>
+                  <td className="p-6 text-[#20C997] text-right font-black">${m.cost.toLocaleString()}</td>
                 </tr>
               ))}
               {maintenance.length === 0 && (
@@ -231,6 +328,48 @@ export default function Flota() {
               )}
             </tbody>
           </table>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          <div className="flex justify-end">
+             <button 
+               onClick={() => setShowFuelModal(true)}
+               className="px-6 py-3 bg-[#20C997] text-white font-black rounded-xl shadow-[0_4px_0_0_#0CA678] hover:translate-y-[2px] transition-all flex items-center gap-2 uppercase text-xs"
+             >
+               Registrar Carga de Combustible
+             </button>
+          </div>
+          <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-gray-50/50 border-b border-gray-100 text-[10px] font-black text-gray-400 uppercase">
+                  <th className="p-6">Unidad</th>
+                  <th className="p-6">Fecha</th>
+                  <th className="p-6">KM</th>
+                  <th className="p-6">Litros</th>
+                  <th className="p-6">Operador</th>
+                  <th className="p-6 text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50 text-[10px] font-bold">
+                {fuelLogs.map(f => (
+                  <tr key={f.id} className="hover:bg-gray-50/30">
+                    <td className="p-6 font-black text-[#1D2124]">{f.unit_id}</td>
+                    <td className="p-6 text-gray-400">{new Date(f.date).toLocaleString()}</td>
+                    <td className="p-6">{f.kilometers.toLocaleString()} KM</td>
+                    <td className="p-6">{f.amount_liters} L</td>
+                    <td className="p-6 uppercase">{f.recorded_by}</td>
+                    <td className="p-6 text-[#20C997] text-right font-black">${f.cost.toLocaleString()}</td>
+                  </tr>
+                ))}
+                {fuelLogs.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="p-20 text-center text-gray-300 font-black uppercase">Sin cargas registradas</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -242,17 +381,29 @@ export default function Flota() {
               <h3 className="text-2xl font-black text-[#1D2124] uppercase italic">Nueva Unidad</h3>
               <div className="space-y-4">
                 <input required placeholder="ID UNIDAD (E.G. M-10)" className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-black uppercase" value={newUnit.unit_id} onChange={e => setNewUnit({...newUnit, unit_id: e.target.value})} />
-                <select className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-black uppercase" value={newUnit.type} onChange={e => setNewUnit({...newUnit, type: e.target.value})}>
-                  <option value="AUTOBOMBA">AUTOBOMBA</option>
-                  <option value="RESCATE">RESCATE</option>
-                  <option value="LOGISTICA">LOGISTICA</option>
-                  <option value="CISTERNA">CISTERNA</option>
-                </select>
+                <div className="grid grid-cols-2 gap-4">
+                  <select className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-black uppercase" value={newUnit.type} onChange={e => setNewUnit({...newUnit, type: e.target.value})}>
+                    <option value="AUTOBOMBA">AUTOBOMBA</option>
+                    <option value="RESCATE">RESCATE</option>
+                    <option value="LOGISTICA">LOGISTICA</option>
+                    <option value="CISTERNA">CISTERNA</option>
+                  </select>
+                  <select className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-black uppercase" value={newUnit.fuel_type} onChange={e => setNewUnit({...newUnit, fuel_type: e.target.value})}>
+                    <option value="DIESEL">DIESEL</option>
+                    <option value="DIESEL PREMIUM">DIESEL PREMIUM</option>
+                    <option value="NAFTA">NAFTA</option>
+                  </select>
+                </div>
                 <input required placeholder="MARCA/MODELO" className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-black uppercase" value={newUnit.model} onChange={e => setNewUnit({...newUnit, model: e.target.value})} />
                 <div className="grid grid-cols-2 gap-4">
                   <input placeholder="PATENTE" className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-black uppercase" value={newUnit.patent} onChange={e => setNewUnit({...newUnit, patent: e.target.value})} />
-                  <input type="number" placeholder="AÑO" className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-black uppercase" value={newUnit.year} onChange={e => setNewUnit({...newUnit, year: parseInt(e.target.value)})} />
+                  <input placeholder="MOTOR N°" className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-black uppercase" value={newUnit.engine_number} onChange={e => setNewUnit({...newUnit, engine_number: e.target.value})} />
                 </div>
+                <div className="grid grid-cols-2 gap-4">
+                   <input type="number" placeholder="KM INICIAL" className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-black uppercase" value={newUnit.kilometers || ''} onChange={e => setNewUnit({...newUnit, kilometers: parseInt(e.target.value)})} />
+                   <input type="number" placeholder="AÑO" className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-black uppercase" value={newUnit.year} onChange={e => setNewUnit({...newUnit, year: parseInt(e.target.value)})} />
+                </div>
+                <textarea placeholder="NOTAS ADICIONALES" className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl p-4 text-sm font-bold uppercase" value={newUnit.notes} onChange={e => setNewUnit({...newUnit, notes: e.target.value})} />
               </div>
               <div className="flex gap-4">
                 <button type="button" onClick={() => setShowUnitModal(false)} className="flex-1 h-12 border-2 border-gray-100 rounded-xl font-black uppercase text-xs">Cerrar</button>
@@ -284,6 +435,31 @@ export default function Flota() {
               <div className="flex gap-4">
                 <button type="button" onClick={() => setShowMaintModal(false)} className="flex-1 h-12 border-2 border-gray-100 rounded-xl font-black uppercase text-xs">Cerrar</button>
                 <button type="submit" className="flex-1 h-12 bg-[#1D2124] text-white font-black rounded-xl uppercase text-xs italic">Guardar Registro</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {showFuelModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1D2124]/80 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95">
+            <form onSubmit={handleCreateFuel} className="p-8 space-y-6">
+              <h3 className="text-2xl font-black text-[#1D2124] uppercase italic underline decoration-green-400">Carga Combustible</h3>
+              <div className="space-y-4">
+                <select required className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-black uppercase" value={newFuel.unit_id} onChange={e => setNewFuel({...newFuel, unit_id: e.target.value})}>
+                  <option value="">SELECCIONE UNIDAD</option>
+                  {fleet.map(v => <option key={v.id} value={v.unit_id}>{v.unit_id}</option>)}
+                </select>
+                <input type="number" placeholder="KILOMETRAJE ACTUAL" className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-black uppercase" value={newFuel.kilometers || ''} onChange={e => setNewFuel({...newFuel, kilometers: parseInt(e.target.value)})} />
+                <div className="grid grid-cols-2 gap-4">
+                  <input type="number" step="0.01" placeholder="LITROS" className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-black uppercase" value={newFuel.amount_liters || ''} onChange={e => setNewFuel({...newFuel, amount_liters: parseFloat(e.target.value)})} />
+                  <input type="number" placeholder="COSTO TOTAL $" className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-black uppercase" value={newFuel.cost || ''} onChange={e => setNewFuel({...newFuel, cost: parseFloat(e.target.value)})} />
+                </div>
+                <input required placeholder="OPERADOR" className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-black uppercase" value={newFuel.recorded_by} onChange={e => setNewFuel({...newFuel, recorded_by: e.target.value})} />
+              </div>
+              <div className="flex gap-4">
+                <button type="button" onClick={() => setShowFuelModal(false)} className="flex-1 h-12 border-2 border-gray-100 rounded-xl font-black uppercase text-xs">Cerrar</button>
+                <button type="submit" className="flex-1 h-12 bg-[#20C997] text-white font-black rounded-xl uppercase text-xs italic">Guardar Carga</button>
               </div>
             </form>
           </div>
