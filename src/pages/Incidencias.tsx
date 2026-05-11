@@ -14,6 +14,13 @@ interface Incident {
 export default function Incidencias() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [newIncident, setNewIncident] = useState({
+    type: 'INCENDIO ESTRUCTURAL',
+    description: '',
+    location: '',
+    status: 'ACTIVO'
+  });
 
   const fetchIncidents = async () => {
     try {
@@ -30,6 +37,25 @@ export default function Incidencias() {
   useEffect(() => {
     fetchIncidents();
   }, []);
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/incidents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newIncident)
+      });
+      if (res.ok) {
+        toast.success('Incidencia registrada y despachada');
+        setShowModal(false);
+        setNewIncident({ type: 'INCENDIO ESTRUCTURAL', description: '', location: '', status: 'ACTIVO' });
+        fetchIncidents();
+      }
+    } catch (err) {
+      toast.error('Error al registrar incidencia');
+    }
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -48,7 +74,10 @@ export default function Incidencias() {
           <h2 className="text-3xl font-black tracking-tight text-[#1D2124] uppercase">Incidencias</h2>
           <p className="text-gray-400 text-xs font-bold uppercase tracking-widest">Centro de despacho y despacho</p>
         </div>
-        <button className="px-6 py-3 bg-[#FA5252] text-white font-black rounded-xl shadow-[0_4px_0_0_#C92A2A] hover:translate-y-[2px] transition-all flex items-center gap-2 uppercase text-xs">
+        <button 
+          onClick={() => setShowModal(true)}
+          className="px-6 py-3 bg-[#FA5252] text-white font-black rounded-xl shadow-[0_4px_0_0_#C92A2A] hover:translate-y-[2px] transition-all flex items-center gap-2 uppercase text-xs"
+        >
           <Plus size={18} />
           Nueva Salida
         </button>
@@ -109,12 +138,6 @@ export default function Incidencias() {
                   </div>
                 </div>
               ))}
-              {incidents.length === 0 && !loading && (
-                <div className="p-20 text-center text-gray-300">
-                  <Flame size={48} className="mx-auto mb-4 opacity-10" />
-                  <p className="font-black uppercase tracking-widest text-xs">Sin incidencias activas en el sistema</p>
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -133,7 +156,7 @@ export default function Incidencias() {
               <div className="flex items-center gap-4">
                 <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center text-white/40 font-black">03:4</div>
                 <div>
-                  <p className="text-[10px] font-black text-gray-500 uppercase">Promedio Salida</p>
+                  <p className="text-[10px] font-black text-gray-400 uppercase">Promedio Salida</p>
                   <p className="text-sm font-black italic">Minutos</p>
                 </div>
               </div>
@@ -160,6 +183,78 @@ export default function Incidencias() {
           </div>
         </div>
       </div>
+
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1D2124]/80 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <form onSubmit={handleCreate} className="p-8 space-y-6">
+              <div>
+                <h3 className="text-2xl font-black text-[#1D2124] uppercase mb-1">Nueva Salida de Emergencia</h3>
+                <p className="text-gray-400 text-[10px] font-bold uppercase tracking-widest">Registra el despacho inmediato</p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Tipo de Incidente</label>
+                  <select 
+                    className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-black focus:border-[#FA5252] focus:outline-none transition-all uppercase"
+                    value={newIncident.type}
+                    onChange={(e) => setNewIncident({...newIncident, type: e.target.value})}
+                  >
+                    <option value="INCENDIO ESTRUCTURAL">INCENDIO ESTRUCTURAL</option>
+                    <option value="ACCIDENTE VEHICULAR">ACCIDENTE VEHICULAR</option>
+                    <option value="RESCATE DE PERSONAS">RESCATE DE PERSONAS</option>
+                    <option value="INCENDIO FORESTAL">INCENDIO FORESTAL</option>
+                    <option value="MATERIALES PELIGROSOS">MATERIALES PELIGROSOS</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Ubicación / Dirección</label>
+                  <div className="relative">
+                    <MapPin className="absolute left-4 top-3.5 text-gray-300" size={18} />
+                    <input 
+                      required
+                      type="text"
+                      className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl pl-12 pr-4 text-sm font-bold focus:border-[#FA5252] focus:outline-none transition-all uppercase"
+                      value={newIncident.location}
+                      onChange={(e) => setNewIncident({...newIncident, location: e.target.value})}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Descripción / Novedades</label>
+                  <textarea 
+                    required
+                    rows={4}
+                    className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-[#FA5252] focus:outline-none transition-all uppercase"
+                    value={newIncident.description}
+                    onChange={(e) => setNewIncident({...newIncident, description: e.target.value})}
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-4 pt-4">
+                <button 
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="flex-1 h-12 text-[#1D2124] font-black rounded-xl border-2 border-gray-100 hover:bg-gray-50 transition-all uppercase text-xs"
+                >
+                  Cerrar
+                </button>
+                <button 
+                  type="submit"
+                  className="flex-1 h-12 bg-[#FA5252] text-white font-black rounded-xl shadow-[0_4px_0_0_#C92A2A] hover:translate-y-[2px] transition-all uppercase text-xs flex items-center justify-center gap-2"
+                >
+                  <Flame size={18} />
+                  Despachar Ahora
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

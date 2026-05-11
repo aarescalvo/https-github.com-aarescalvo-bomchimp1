@@ -70,7 +70,43 @@ async function startServer() {
       field_name TEXT,
       start_time DATETIME,
       end_time DATETIME,
-      status TEXT DEFAULT 'CONFIRMADA'
+      status TEXT DEFAULT 'CONFIRMADA',
+      price REAL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS duty_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      officer_in_charge TEXT,
+      observations TEXT,
+      entry_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+      exit_time DATETIME,
+      shift TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS documents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT,
+      category TEXT,
+      status TEXT,
+      expiry_date DATETIME,
+      file_url TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE,
+      name TEXT,
+      role TEXT,
+      permissions TEXT,
+      last_login DATETIME
+    );
+
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER,
+      action TEXT,
+      details TEXT,
+      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS settings (
@@ -178,12 +214,108 @@ async function startServer() {
     }
   });
 
+  app.post("/api/incidents", (req, res) => {
+    try {
+      const { type, description, location, status } = req.body;
+      const stmt = db.prepare('INSERT INTO incidents (type, description, location, status) VALUES (?, ?, ?, ?)');
+      const info = stmt.run(type, description, location, status || 'ACTIVO');
+      
+      // Auto Audit
+      db.prepare('INSERT INTO audit_log (action, details) VALUES (?, ?)').run('NUEVA_INCIDENCIA', `Tipo: ${type} en ${location}`);
+      
+      res.json({ id: info.lastInsertRowid });
+    } catch (err) {
+      res.status(500).json({ error: "Error creating incident" });
+    }
+  });
+
   app.get("/api/personnel", (req, res) => {
     try {
       const data = db.prepare('SELECT * FROM personnel').all();
       res.json(data);
     } catch (err) {
       res.status(500).json({ error: "Error fetch personnel" });
+    }
+  });
+
+  app.post("/api/personnel", (req, res) => {
+    try {
+      const { name, rank, dni, phone, status } = req.body;
+      const stmt = db.prepare('INSERT INTO personnel (name, rank, dni, phone, status) VALUES (?, ?, ?, ?, ?)');
+      const info = stmt.run(name, rank, dni, phone, status || 'ACTIVO');
+      db.prepare('INSERT INTO audit_log (action, details) VALUES (?, ?)').run('ALTA_PERSONAL', `Nombre: ${name}, DNI: ${dni}`);
+      res.json({ id: info.lastInsertRowid });
+    } catch (err) {
+      res.status(500).json({ error: "Error creating personnel" });
+    }
+  });
+
+  app.get("/api/duty-log", (req, res) => {
+    try {
+      const data = db.prepare('SELECT * FROM duty_log ORDER BY entry_time DESC').all();
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: "Error fetch duty log" });
+    }
+  });
+
+  app.post("/api/duty-log", (req, res) => {
+    try {
+      const { officer_in_charge, observations, shift } = req.body;
+      const stmt = db.prepare('INSERT INTO duty_log (officer_in_charge, observations, shift) VALUES (?, ?, ?)');
+      const info = stmt.run(officer_in_charge, observations, shift);
+      res.json({ id: info.lastInsertRowid });
+    } catch (err) {
+      res.status(500).json({ error: "Error creating duty log" });
+    }
+  });
+
+  app.get("/api/documents", (req, res) => {
+    try {
+      const data = db.prepare('SELECT * FROM documents').all();
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: "Error fetch documents" });
+    }
+  });
+
+  app.post("/api/documents", (req, res) => {
+    try {
+      const { title, category, status, expiry_date } = req.body;
+      const stmt = db.prepare('INSERT INTO documents (title, category, status, expiry_date) VALUES (?, ?, ?, ?)');
+      const info = stmt.run(title, category, status, expiry_date);
+      res.json({ id: info.lastInsertRowid });
+    } catch (err) {
+      res.status(500).json({ error: "Error creating document" });
+    }
+  });
+
+  app.get("/api/users", (req, res) => {
+    try {
+      const data = db.prepare('SELECT * FROM users').all();
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: "Error fetch users" });
+    }
+  });
+
+  app.post("/api/users", (req, res) => {
+    try {
+      const { username, name, role, permissions } = req.body;
+      const stmt = db.prepare('INSERT INTO users (username, name, role, permissions) VALUES (?, ?, ?, ?)');
+      const info = stmt.run(username, name, role, permissions);
+      res.json({ id: info.lastInsertRowid });
+    } catch (err) {
+      res.status(500).json({ error: "Error creating user" });
+    }
+  });
+
+  app.get("/api/audit", (req, res) => {
+    try {
+      const data = db.prepare('SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT 100').all();
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: "Error fetch audit log" });
     }
   });
 

@@ -6,12 +6,16 @@ import {
   AlertTriangle,
   Clock,
   Plus,
-  Activity
+  Activity,
+  MapPin,
+  Save
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
 
 export default function Home({ settings }: { settings: any }) {
+  const navigate = useNavigate();
   const [stats, setStats] = useState({
     active_guard: '...',
     ready_units: '...',
@@ -19,77 +23,80 @@ export default function Home({ settings }: { settings: any }) {
     alerts: '...'
   });
   const [loading, setLoading] = useState(true);
+  const [showIncidentModal, setShowIncidentModal] = useState(false);
+  const [newIncident, setNewIncident] = useState({
+    type: 'INCENDIO',
+    description: '',
+    location: '',
+  });
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/stats');
+      if (res.ok) {
+        const data = await res.json();
+        setStats({
+          active_guard: data.active_guard.toString(),
+          ready_units: `${data.ready_units}/${data.total_units}`,
+          incidents_24h: data.incidents_24h.toString(),
+          alerts: data.alerts.toString()
+        });
+      }
+    } catch (err) {
+      console.warn('Dashboard stats error');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      
-      // Point 1: Using Promise.allSettled to handle partial failures
-      const endpoints = [
-        '/api/stats',
-        '/api/alerts/vencimientos',
-        '/api/guardia',
-        '/api/incidents',
-        '/api/personal',
-        '/api/flota',
-        '/api/finances/balance'
-      ];
-
-      try {
-        const results = await Promise.allSettled(
-          endpoints.map(url => fetch(url).then(res => {
-            if (!res.ok) throw new Error(`Fetch failed: ${url}`);
-            return res.json();
-          }))
-        );
-
-        // Process results
-        results.forEach((result, index) => {
-          if (result.status === 'fulfilled') {
-            const data = result.value;
-            const url = endpoints[index];
-
-            if (url === '/api/stats') {
-              setStats({
-                active_guard: data.active_guard.toString(),
-                ready_units: `${data.ready_units}/${data.total_units}`,
-                incidents_24h: data.incidents_24h.toString(),
-                alerts: data.alerts.toString()
-              });
-            }
-          } else {
-            console.warn(`Error loading endpoint ${endpoints[index]}:`, result.reason);
-          }
-        });
-      } catch (err) {
-        console.error('Fatal error in Dashboard fetch:', err);
-        toast.error('Error crítico al cargar datos del dashboard');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchData();
   }, []);
 
+  const handleQuickIncident = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/incidents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newIncident)
+      });
+      if (res.ok) {
+        toast.success('Incidencia despachada');
+        setShowIncidentModal(false);
+        setNewIncident({ type: 'INCENDIO', description: '', location: '' });
+        fetchData();
+      }
+    } catch (err) {
+      toast.error('Error al despachar');
+    }
+  };
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <h2 className="text-3xl font-black tracking-tight text-[#1D2124] uppercase">{settings.dashboard_title}</h2>
-            <span className="bg-[#1D2124] text-white text-[8px] font-black px-2 py-0.5 rounded-full uppercase">v2.0.4-STABLE</span>
+            <h2 className="text-3xl font-black tracking-tight text-[#1D2124] uppercase">{settings.institution_name || 'Cuartel Central'}</h2>
+            <span className="bg-[#1D2124] text-white text-[8px] font-black px-2 py-0.5 rounded-full uppercase">SISTEMA ACTIVO</span>
           </div>
-          <p className="text-gray-400 text-xs font-bold uppercase tracking-widest">{settings.dashboard_subtitle}</p>
+          <p className="text-gray-400 text-xs font-bold uppercase tracking-widest">{settings.dashboard_subtitle || 'Gestión de Emergencias y Operaciones'}</p>
         </div>
         <div className="flex gap-4 flex-wrap">
-          <button className="flex items-center gap-2 px-6 py-2.5 bg-white border-2 border-[#1D2124] rounded-full text-sm font-bold hover:bg-gray-50 transition-all active:translate-y-0.5">
+          <button 
+            onClick={() => navigate('/guardia')}
+            className="flex items-center gap-2 px-6 py-2.5 bg-white border-2 border-[#1D2124] rounded-full text-sm font-bold hover:bg-gray-50 transition-all active:translate-y-0.5"
+          >
             <Clock size={16} />
-            Cierre de Guardia
+            Libreta de Guardia
           </button>
-          <button className="flex items-center gap-2 px-6 py-2.5 bg-[#20C997] text-white rounded-full text-sm font-bold shadow-[0_4px_0_0_#12B886] hover:opacity-90 active:shadow-none active:translate-y-1 transition-all">
+          <button 
+            onClick={() => setShowIncidentModal(true)}
+            className="flex items-center gap-2 px-6 py-2.5 bg-[#FA5252] text-white rounded-full text-sm font-bold shadow-[0_4px_0_0_#C92A2A] hover:bg-[#F03E3E] active:shadow-none active:translate-y-1 transition-all uppercase"
+          >
             <Plus size={16} />
-            NUEVA INCIDENCIA
+            Nueva Incidencia
           </button>
         </div>
       </div>
@@ -182,6 +189,52 @@ export default function Home({ settings }: { settings: any }) {
           </button>
         </div>
       </div>
+
+      {showIncidentModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1D2124]/80 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <form onSubmit={handleQuickIncident} className="p-8 space-y-6">
+              <div>
+                <h3 className="text-2xl font-black text-[#1D2124] uppercase mb-1 underline decoration-red-500 decoration-4">Despacho Rápido</h3>
+                <p className="text-gray-400 text-[10px] font-bold uppercase tracking-widest">Alerta inmediata al sistema de despacho</p>
+              </div>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Tipo</label>
+                  <select 
+                    className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-black focus:border-[#FA5252] focus:outline-none transition-all"
+                    value={newIncident.type}
+                    onChange={(e) => setNewIncident({...newIncident, type: e.target.value})}
+                  >
+                    <option value="INCENDIO">INCENDIO</option>
+                    <option value="ACCIDENTE">ACCIDENTE</option>
+                    <option value="RESCATE">RESCATE</option>
+                    <option value="MATERIALES PELIGROSOS">MAT-PEL</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Ubicación</label>
+                  <div className="relative">
+                    <MapPin className="absolute left-4 top-3.5 text-gray-300" size={18} />
+                    <input required placeholder="DIRECCION O INTERSECCION" className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl pl-12 pr-4 text-sm font-bold uppercase focus:border-[#FA5252] focus:outline-none transition-all" value={newIncident.location} onChange={(e) => setNewIncident({...newIncident, location: e.target.value})} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Breve descripción</label>
+                  <input required placeholder="E.G. HUMO EN VIVIENDA" className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-bold uppercase focus:border-[#FA5252] focus:outline-none transition-all" value={newIncident.description} onChange={(e) => setNewIncident({...newIncident, description: e.target.value})} />
+                </div>
+              </div>
+              <div className="flex gap-4 pt-4">
+                 <button type="button" onClick={() => setShowIncidentModal(false)} className="flex-1 h-12 text-[#1D2124] font-black rounded-xl border-2 border-gray-100 uppercase text-xs">Cerrar</button>
+                 <button type="submit" className="flex-1 h-12 bg-[#FA5252] text-white font-black rounded-xl shadow-[0_4px_0_0_#C92A2A] uppercase text-xs flex items-center justify-center gap-2">
+                   <Flame size={18} />
+                   SALIDA YA
+                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

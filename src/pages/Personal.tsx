@@ -15,6 +15,14 @@ export default function Personal() {
   const [personnel, setPersonnel] = useState<Person[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [showModal, setShowModal] = useState(false);
+  const [newPerson, setNewPerson] = useState({
+    name: '',
+    rank: 'BOMBERO',
+    dni: '',
+    phone: '',
+    status: 'ACTIVO'
+  });
 
   const fetchPersonnel = async () => {
     try {
@@ -32,6 +40,25 @@ export default function Personal() {
     fetchPersonnel();
   }, []);
 
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/personnel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newPerson)
+      });
+      if (res.ok) {
+        toast.success('Personal registrado correctamente');
+        setShowModal(false);
+        setNewPerson({ name: '', rank: 'BOMBERO', dni: '', phone: '', status: 'ACTIVO' });
+        fetchPersonnel();
+      }
+    } catch (err) {
+      toast.error('Error al registrar personal');
+    }
+  };
+
   const filtered = personnel.filter(p => 
     p.name.toLowerCase().includes(search.toLowerCase()) || 
     p.dni.includes(search)
@@ -44,7 +71,10 @@ export default function Personal() {
           <h2 className="text-3xl font-black tracking-tight text-[#1D2124] uppercase">Gestión de Personal</h2>
           <p className="text-gray-400 text-xs font-bold uppercase tracking-widest">Listado y legajos de bomberos</p>
         </div>
-        <button className="px-6 py-3 bg-[#FFD43B] text-[#1D2124] font-black rounded-xl shadow-[0_4px_0_0_#FAB005] hover:translate-y-[2px] transition-all flex items-center gap-2 uppercase text-xs">
+        <button 
+          onClick={() => setShowModal(true)}
+          className="px-6 py-3 bg-[#FFD43B] text-[#1D2124] font-black rounded-xl shadow-[0_4px_0_0_#FAB005] hover:translate-y-[2px] transition-all flex items-center gap-2 uppercase text-xs"
+        >
           <UserPlus size={18} />
           Alta de Personal
         </button>
@@ -102,10 +132,6 @@ export default function Personal() {
                 </div>
               </div>
             </div>
-            <div className="bg-gray-50 p-4 border-t border-gray-50 flex gap-2">
-              <button className="flex-1 py-2 bg-white text-[#1D2124] text-[10px] font-black rounded-xl border border-gray-100 hover:shadow-sm transition-all uppercase">Legajo</button>
-              <button className="flex-1 py-2 bg-white text-[#1D2124] text-[10px] font-black rounded-xl border border-gray-100 hover:shadow-sm transition-all uppercase">Guardias</button>
-            </div>
           </div>
         ))}
         {filtered.length === 0 && !loading && (
@@ -115,6 +141,86 @@ export default function Personal() {
           </div>
         )}
       </div>
+
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1D2124]/80 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <form onSubmit={handleCreate} className="p-8 space-y-6">
+              <div>
+                <h3 className="text-2xl font-black text-[#1D2124] uppercase mb-1">Alta de Personal</h3>
+                <p className="text-gray-400 text-[10px] font-bold uppercase tracking-widest">Registra un nuevo bombero en el sistema</p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Nombre Completo</label>
+                  <input 
+                    required
+                    type="text"
+                    className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-bold focus:border-[#FFD43B] focus:outline-none transition-all uppercase"
+                    value={newPerson.name}
+                    onChange={(e) => setNewPerson({...newPerson, name: e.target.value})}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">DNI</label>
+                    <input 
+                      required
+                      type="text"
+                      className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-bold focus:border-[#FFD43B] focus:outline-none transition-all"
+                      value={newPerson.dni}
+                      onChange={(e) => setNewPerson({...newPerson, dni: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Jerarquía / Rango</label>
+                    <select 
+                      className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-black focus:border-[#FFD43B] focus:outline-none transition-all uppercase"
+                      value={newPerson.rank}
+                      onChange={(e) => setNewPerson({...newPerson, rank: e.target.value})}
+                    >
+                      <option value="BOMBERO">BOMBERO</option>
+                      <option value="CABO">CABO</option>
+                      <option value="SARGENTO">SARGENTO</option>
+                      <option value="OFICIAL">OFICIAL</option>
+                      <option value="COMANDANTE">COMANDANTE</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Teléfono de Contacto</label>
+                  <input 
+                    required
+                    type="text"
+                    className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-bold focus:border-[#FFD43B] focus:outline-none transition-all"
+                    value={newPerson.phone}
+                    onChange={(e) => setNewPerson({...newPerson, phone: e.target.value})}
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-4 pt-4">
+                <button 
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="flex-1 h-12 text-[#1D2124] font-black rounded-xl border-2 border-gray-100 hover:bg-gray-50 transition-all uppercase text-xs"
+                >
+                  Cerrar
+                </button>
+                <button 
+                  type="submit"
+                  className="flex-1 h-12 bg-[#FFD43B] text-[#1D2124] font-black rounded-xl shadow-[0_4px_0_0_#FAB005] hover:translate-y-[2px] transition-all uppercase text-xs"
+                >
+                  Registrar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
