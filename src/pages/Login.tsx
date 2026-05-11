@@ -8,18 +8,27 @@ export default function Login({ onLogin, settings }: { onLogin: () => void, sett
   const [pass, setPass] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    setTimeout(() => {
-      if (user === 'admin' && pass === 'admin123') {
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: user, password: pass })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
         onLogin();
         toast.success('Acceso concedido');
       } else {
-        toast.error('Credenciales incorrectas');
+        toast.error(data.error || 'Credenciales incorrectas');
         setIsLoading(false);
       }
-    }, 1000);
+    } catch (err) {
+      toast.error('Error de conexión');
+      setIsLoading(false);
+    }
   };
 
   return (

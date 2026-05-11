@@ -29,8 +29,10 @@ const SidebarLink = ({ to, icon: Icon, label, active }: { to: string, icon: any,
   </Link>
 );
 
-export default function Sidebar({ settings, onLogout }: { settings: any, onLogout: () => void }) {
+export default function Sidebar({ settings, onLogout, user }: { settings: any, onLogout: () => void, user: any }) {
   const location = useLocation();
+
+  const userInitials = user?.name ? user.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) : '??';
 
   return (
     <aside className="w-64 bg-[#1D2124] flex-shrink-0 flex flex-col p-6 overflow-y-auto">
@@ -71,10 +73,12 @@ export default function Sidebar({ settings, onLogout }: { settings: any, onLogou
 
       <div className="mt-8 p-5 bg-white/5 rounded-2xl border border-white/10">
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#FFD43B] to-[#FA5252] flex items-center justify-center font-black text-[#1D2124] text-xs flex-shrink-0">OR</div>
+          <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#FFD43B] to-[#FA5252] flex items-center justify-center font-black text-[#1D2124] text-xs flex-shrink-0">
+            {userInitials}
+          </div>
           <div className="min-w-0">
-            <p className="text-white text-xs font-bold uppercase tracking-tight truncate">Of. Rodriguez</p>
-            <p className="text-gray-500 text-[10px] font-bold truncate">Jefe de Turno</p>
+            <p className="text-white text-xs font-bold uppercase tracking-tight truncate">{user?.name || 'Usuario'}</p>
+            <p className="text-gray-500 text-[10px] font-bold truncate uppercase">{user?.role || 'Invitado'}</p>
           </div>
         </div>
         <button className="w-full py-2 bg-white/10 hover:bg-white/20 text-white text-[10px] font-black rounded-lg transition-all uppercase tracking-widest border border-white/10">

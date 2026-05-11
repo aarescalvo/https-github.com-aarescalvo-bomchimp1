@@ -27,46 +27,59 @@ import AppLayout from './layouts/AppLayout';
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState<any>(null);
   const [settings, setSettings] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchSettings = async () => {
     try {
       const res = await fetch('/api/settings');
+      if (res.status === 401) return; // Wait for login
       const data = await res.json();
       setSettings(data);
     } catch (err) {
       console.error('Error loading settings:', err);
-      // Fallback settings if server is not ready
-      setSettings({
-        app_name: 'SGP-B',
-        institution_name: 'Operaciones Chimpay',
-        dashboard_title: 'Dashboard Operativo',
-        dashboard_subtitle: 'Cargando...',
-        logo_url: ''
-      });
+    }
+  };
+
+  const checkAuth = async () => {
+    try {
+      const res = await fetch('/api/auth/me');
+      if (res.ok) {
+        const userData = await res.json();
+        setUser(userData);
+        setIsAuthenticated(true);
+        await fetchSettings();
+      } else {
+        setIsAuthenticated(false);
+        setUser(null);
+      }
+    } catch (err) {
+      setIsAuthenticated(false);
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    const auth = localStorage.getItem('sgp_auth');
-    if (auth === 'true') setIsAuthenticated(true);
-    fetchSettings();
+    checkAuth();
   }, []);
 
   const handleLogin = () => {
-    setIsAuthenticated(true);
-    localStorage.setItem('sgp_auth', 'true');
+    checkAuth();
   };
 
-  const handleLogout = () => {
-    setIsAuthenticated(false);
-    localStorage.removeItem('sgp_auth');
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      setIsAuthenticated(false);
+      setUser(null);
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
   };
 
-  if (isLoading || !settings) {
+  if (isLoading) {
     return (
       <div className="h-screen w-screen flex items-center justify-center bg-[#1D2124]">
         <div className="flex flex-col items-center gap-4">
@@ -80,6 +93,15 @@ export default function App() {
     );
   }
 
+  // Fallback for settings if not loaded yet but authenticated
+  const currentSettings = settings || {
+    app_name: 'SGP-B',
+    institution_name: 'Operaciones Chimpay',
+    dashboard_title: 'Dashboard Operativo',
+    dashboard_subtitle: 'Cargando...',
+    logo_url: ''
+  };
+
   return (
     <BrowserRouter>
       <Toaster position="top-right" richColors />
@@ -87,19 +109,19 @@ export default function App() {
         <Routes>
           {!isAuthenticated ? (
             <>
-              <Route path="/login" element={<Login onLogin={handleLogin} settings={settings} />} />
+              <Route path="/login" element={<Login onLogin={handleLogin} settings={currentSettings} />} />
               <Route path="*" element={<Navigate to="/login" replace />} />
             </>
           ) : (
             <Route 
               path="/*" 
               element={
-                <AppLayout onLogout={handleLogout} settings={settings}>
+                <AppLayout onLogout={handleLogout} settings={currentSettings} user={user}>
                   <Routes>
-                    <Route path="/dashboard" element={<Home settings={settings} />} />
-                    <Route path="/ajustes" element={<SettingsPage settings={settings} onUpdate={fetchSettings} />} />
+                    <Route path="/dashboard" element={<Home settings={currentSettings} />} />
+                    <Route path="/ajustes" element={<SettingsPage settings={currentSettings} onUpdate={fetchSettings} />} />
                     
-                    <Route path="/incidencias" element={<Incidencias settings={settings} />} />
+                    <Route path="/incidencias" element={<Incidencias settings={currentSettings} />} />
                     <Route path="/personal" element={<Personal />} />
                     <Route path="/flota" element={<Flota />} />
                     <Route path="/pagos" element={<Pagos />} />

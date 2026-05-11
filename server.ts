@@ -4,6 +4,8 @@ import path from "path";
 import fs from "fs";
 import Database from "better-sqlite3";
 import cookieParser from "cookie-parser";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -23,7 +25,9 @@ async function startServer() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE,
       password TEXT,
+      name TEXT,
       role TEXT,
+      permissions TEXT,
       last_login DATETIME
     );
 
@@ -46,7 +50,12 @@ async function startServer() {
       birthdate DATE,
       address TEXT,
       email TEXT,
-      blood_group TEXT
+      blood_group TEXT,
+      medical_expiry DATE,
+      fitness_level TEXT DEFAULT 'APTO',
+      allergies TEXT,
+      emergency_contact_name TEXT,
+      emergency_contact_phone TEXT
     );
 
     CREATE TABLE IF NOT EXISTS fleet (
@@ -62,7 +71,18 @@ async function startServer() {
       kilometers INTEGER DEFAULT 0,
       fuel_type TEXT,
       last_service_mileage INTEGER DEFAULT 0,
+      last_service_date DATE,
       notes TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS damage_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      unit_id TEXT,
+      description TEXT,
+      severity TEXT,
+      recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      status TEXT DEFAULT 'PENDIENTE',
+      resolved_at DATETIME
     );
 
     CREATE TABLE IF NOT EXISTS personnel_records (
@@ -108,11 +128,13 @@ async function startServer() {
 
     CREATE TABLE IF NOT EXISTS duty_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      guard_shift_id INTEGER,
       officer_in_charge TEXT,
       observations TEXT,
       entry_time DATETIME DEFAULT CURRENT_TIMESTAMP,
       exit_time DATETIME,
-      shift TEXT
+      shift TEXT,
+      FOREIGN KEY(guard_shift_id) REFERENCES guard_shifts(id)
     );
 
     CREATE TABLE IF NOT EXISTS guard_shifts (
@@ -127,13 +149,15 @@ async function startServer() {
     CREATE TABLE IF NOT EXISTS attendance (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       personnel_id INTEGER,
+      guard_shift_id INTEGER,
       check_in DATETIME DEFAULT CURRENT_TIMESTAMP,
       check_out DATETIME,
       type TEXT DEFAULT 'GUARDIA', -- 'GUARDIA', 'INCENDIO', 'LIMPIEZA'
       observations TEXT,
       recorded_by TEXT,
       recorded_out_by TEXT,
-      FOREIGN KEY(personnel_id) REFERENCES personnel(id)
+      FOREIGN KEY(personnel_id) REFERENCES personnel(id),
+      FOREIGN KEY(guard_shift_id) REFERENCES guard_shifts(id)
     );
 
     CREATE TABLE IF NOT EXISTS fuel_log (
@@ -156,13 +180,21 @@ async function startServer() {
       file_url TEXT
     );
 
-    CREATE TABLE IF NOT EXISTS users (
+    CREATE TABLE IF NOT EXISTS alerts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      username TEXT UNIQUE,
-      name TEXT,
-      role TEXT,
-      permissions TEXT,
-      last_login DATETIME
+      type TEXT,        -- VENCIMIENTO, GUARDIA, MANTENIMIENTO, EMERGENCIA
+      severity TEXT,    -- INFO, WARNING, CRITICAL, EMERGENCY
+      title TEXT,
+      description TEXT,
+      source_module TEXT,
+      target_user_id INTEGER,
+      is_read BOOLEAN DEFAULT 0,
+      is_resolved BOOLEAN DEFAULT 0,
+      action_url TEXT,
+      related_entity_id INTEGER,
+      related_entity_type TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(target_user_id) REFERENCES users(id)
     );
 
     CREATE TABLE IF NOT EXISTS audit_log (
@@ -202,16 +234,98 @@ async function startServer() {
   try { db.exec("ALTER TABLE fleet ADD COLUMN notes TEXT;"); } catch(e) {}
   try { db.exec("ALTER TABLE attendance ADD COLUMN recorded_by TEXT;"); } catch(e) {}
   try { db.exec("ALTER TABLE attendance ADD COLUMN recorded_out_by TEXT;"); } catch(e) {}
+  try { db.exec("ALTER TABLE duty_log ADD COLUMN guard_shift_id INTEGER;"); } catch(e) {}
+  try { db.exec("ALTER TABLE attendance ADD COLUMN guard_shift_id INTEGER;"); } catch(e) {}
+  try { db.exec("ALTER TABLE personnel ADD COLUMN medical_expiry DATE;"); } catch(e) {}
+  try { db.exec("ALTER TABLE personnel ADD COLUMN fitness_level TEXT DEFAULT 'APTO';"); } catch(e) {}
+  try { db.exec("ALTER TABLE personnel ADD COLUMN allergies TEXT;"); } catch(e) {}
+  try { db.exec("ALTER TABLE personnel ADD COLUMN emergency_contact_name TEXT;"); } catch(e) {}
+  try { db.exec("ALTER TABLE personnel ADD COLUMN emergency_contact_phone TEXT;"); } catch(e) {}
+  try { db.exec("ALTER TABLE fleet ADD COLUMN last_service_date DATE;"); } catch(e) {}
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS damage_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        unit_id TEXT,
+        description TEXT,
+        severity TEXT,
+        recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        status TEXT DEFAULT 'PENDIENTE',
+        resolved_at DATETIME
+      );
+    `);
+  } catch(e) {}
 
   app.use(express.json());
   app.use(cookieParser());
+
+  const SECRET_KEY = process.env.JWT_SECRET || "bomberos-secret-2026";
+
+  // Auth Middleware
+  const authenticate = (req: any, res: any, next: any) => {
+    const token = req.cookies.sgp_token;
+    if (!token) return res.status(401).json({ error: "No autenticado" });
+    try {
+      const decoded = jwt.verify(token, SECRET_KEY);
+      req.user = decoded;
+      next();
+    } catch (err) {
+      res.status(401).json({ error: "Token inválido" });
+    }
+  };
+
+  const isAdmin = (req: any, res: any, next: any) => {
+    if (req.user?.role !== 'ADMIN') return res.status(403).json({ error: "Acceso denegado" });
+    next();
+  };
+
+  // Auth Routes
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { username, password } = req.body;
+      const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username) as any;
+      
+      if (!user) return res.status(401).json({ error: "Usuario no encontrado" });
+      
+      const validPassword = await bcrypt.compare(password, user.password);
+      if (!validPassword) return res.status(401).json({ error: "Contraseña incorrecta" });
+      
+      const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, SECRET_KEY, { expiresIn: '8h' });
+      
+      db.prepare('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?').run(user.id);
+      db.prepare('INSERT INTO audit_log (user_id, action, details) VALUES (?, ?, ?)').run(user.id, 'LOGIN', `Usuario ${username} inició sesión`);
+
+      res.cookie('sgp_token', token, { httpOnly: true, maxAge: 8 * 60 * 60 * 1000 });
+      res.json({ success: true, user: { id: user.id, username: user.username, name: user.name, role: user.role } });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: "Error en login" });
+    }
+  });
+
+  app.post("/api/auth/logout", (req, res) => {
+    res.clearCookie('sgp_token');
+    res.json({ success: true });
+  });
+
+  app.get("/api/auth/me", authenticate, (req, res) => {
+    const user = db.prepare('SELECT id, username, name, role, permissions FROM users WHERE id = ?').get(req.user.id);
+    res.json(user);
+  });
+
+  // Seed default admin if no users
+  const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get() as any;
+  if (userCount.count === 0) {
+    const hashedPassword = await bcrypt.hash('admin123', 10);
+    db.prepare('INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, ?)').run('admin', hashedPassword, 'Administrador Sistema', 'ADMIN');
+  }
 
   // API Routes
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", database: "connected" });
   });
 
-  app.get("/api/settings", (req, res) => {
+  app.get("/api/settings", authenticate, (req, res) => {
     const settings = db.prepare('SELECT * FROM settings').all();
     const config = settings.reduce((acc: any, s: any) => {
       acc[s.key] = s.value;
@@ -220,7 +334,7 @@ async function startServer() {
     res.json(config);
   });
 
-  app.post("/api/settings", (req, res) => {
+  app.post("/api/settings", authenticate, isAdmin, (req, res) => {
     const updates = req.body; // { key: value }
     const stmt = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
     
@@ -235,31 +349,51 @@ async function startServer() {
     res.json({ success: true });
   });
 
-  app.get("/api/stats", (req, res) => {
+  app.get("/api/stats", authenticate, (req, res) => {
     try {
       const activeGuard = db.prepare('SELECT COUNT(*) as count FROM attendance WHERE check_out IS NULL').get() as any;
       const readyUnits = db.prepare('SELECT COUNT(*) as count FROM fleet WHERE status = "OPERATIVO"').get() as any;
       const totalUnits = db.prepare('SELECT COUNT(*) as count FROM fleet').get() as any;
       const incidents24h = db.prepare('SELECT COUNT(*) as count FROM incidents WHERE timestamp > datetime("now", "-1 day")').get() as any;
       
+      const alertsCount = db.prepare('SELECT COUNT(*) as count FROM alerts WHERE is_read = 0').get() as any;
+      
       res.json({
         active_guard: activeGuard.count || 0,
         ready_units: readyUnits.count || 0,
         total_units: totalUnits.count || 0,
         incidents_24h: incidents24h.count || 0,
-        alerts: 0
+        alerts: alertsCount.count || 0
       });
     } catch (err) {
       res.status(500).json({ error: "Error stats" });
     }
   });
 
-  app.get("/api/audit", (req, res) => {
+  app.get("/api/audit", authenticate, isAdmin, (req, res) => {
     try {
       const data = db.prepare('SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT 100').all();
       res.json(data);
     } catch (err) {
       res.status(500).json({ error: "Error fetch audit" });
+    }
+  });
+
+  app.get("/api/alerts", authenticate, (req, res) => {
+    try {
+      const alerts = db.prepare('SELECT * FROM alerts WHERE is_read = 0 ORDER BY created_at DESC').all();
+      res.json(alerts);
+    } catch (err) {
+      res.status(500).json({ error: "Error fetch alerts" });
+    }
+  });
+
+  app.patch("/api/alerts/:id/read", authenticate, (req, res) => {
+    try {
+      db.prepare('UPDATE alerts SET is_read = 1 WHERE id = ?').run(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Error updating alert" });
     }
   });
 
@@ -300,7 +434,7 @@ async function startServer() {
   });
 
   // Real API routes
-  app.get("/api/incidents", (req, res) => {
+  app.get("/api/incidents", authenticate, (req, res) => {
     try {
       const incidents = db.prepare('SELECT * FROM incidents ORDER BY timestamp DESC').all();
       res.json(incidents);
@@ -309,7 +443,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/incidents", (req, res) => {
+  app.post("/api/incidents", authenticate, (req, res) => {
     try {
       const { type, description, location, status } = req.body;
       const stmt = db.prepare('INSERT INTO incidents (type, description, location, status) VALUES (?, ?, ?, ?)');
@@ -324,7 +458,7 @@ async function startServer() {
     }
   });
 
-  app.get("/api/personnel", (req, res) => {
+  app.get("/api/personnel", authenticate, (req, res) => {
     try {
       const data = db.prepare('SELECT * FROM personnel').all();
       res.json(data);
@@ -333,12 +467,20 @@ async function startServer() {
     }
   });
 
-  app.post("/api/personnel", (req, res) => {
+  app.post("/api/personnel", authenticate, (req, res) => {
     try {
-      const { name, rank, dni, phone, status, birthdate, address, email, blood_group } = req.body;
-      const stmt = db.prepare('INSERT INTO personnel (name, rank, dni, phone, status, birthdate, address, email, blood_group) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
-      const info = stmt.run(name, rank, dni, phone, status || 'ACTIVO', birthdate, address, email, blood_group);
-      db.prepare('INSERT INTO audit_log (action, details) VALUES (?, ?)').run('ALTA_PERSONAL', `Nombre: ${name}, DNI: ${dni}`);
+      const { name, rank, dni, phone, status, birthdate, address, email, blood_group, medical_expiry, fitness_level, allergies, emergency_contact_name, emergency_contact_phone } = req.body;
+      const stmt = db.prepare(`
+        INSERT INTO personnel (
+          name, rank, dni, phone, status, birthdate, address, email, blood_group, 
+          medical_expiry, fitness_level, allergies, emergency_contact_name, emergency_contact_phone
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      const info = stmt.run(
+        name, rank, dni, phone, status || 'ACTIVO', birthdate, address, email, blood_group,
+        medical_expiry, fitness_level || 'APTO', allergies, emergency_contact_name, emergency_contact_phone
+      );
+      db.prepare('INSERT INTO audit_log (user_id, action, details) VALUES (?, ?, ?)').run(req.user.id, 'ALTA_PERSONAL', `Nombre: ${name}, DNI: ${dni}`);
       res.json({ id: info.lastInsertRowid });
     } catch (err) {
       console.error(err);
@@ -346,7 +488,37 @@ async function startServer() {
     }
   });
 
-  app.get("/api/personnel/:id/records", (req, res) => {
+  app.patch("/api/personnel/:id", authenticate, (req, res) => {
+    try {
+      const fields = req.body;
+      const keys = Object.keys(fields);
+      if (keys.length === 0) return res.status(400).json({ error: "No hay campos para actualizar" });
+      
+      const setClause = keys.map(k => `${k} = ?`).join(', ');
+      const values = Object.values(fields);
+      values.push(req.params.id);
+      
+      const stmt = db.prepare(`UPDATE personnel SET ${setClause} WHERE id = ?`);
+      stmt.run(...values);
+      
+      db.prepare('INSERT INTO audit_log (user_id, action, details) VALUES (?, ?, ?)').run(req.user.id, 'EDICION_PERSONAL', `ID: ${req.params.id}`);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Error updating personnel" });
+    }
+  });
+
+  app.delete("/api/personnel/:id", authenticate, isAdmin, (req, res) => {
+    try {
+      db.prepare("UPDATE personnel SET status = 'BAJA' WHERE id = ?").run(req.params.id);
+      db.prepare('INSERT INTO audit_log (user_id, action, details) VALUES (?, ?, ?)').run(req.user.id, 'BAJA_PERSONAL', `ID: ${req.params.id}`);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Error in soft delete" });
+    }
+  });
+
+  app.get("/api/personnel/:id/records", authenticate, (req, res) => {
     try {
       const data = db.prepare('SELECT * FROM personnel_records WHERE personnel_id = ? ORDER BY date DESC').all(req.params.id);
       res.json(data);
@@ -366,7 +538,7 @@ async function startServer() {
     }
   });
 
-  app.get("/api/duty-log", (req, res) => {
+  app.get("/api/duty-log", authenticate, (req, res) => {
     try {
       const data = db.prepare('SELECT * FROM duty_log ORDER BY entry_time DESC').all();
       res.json(data);
@@ -375,11 +547,11 @@ async function startServer() {
     }
   });
 
-  app.post("/api/duty-log", (req, res) => {
+  app.post("/api/duty-log", authenticate, (req, res) => {
     try {
-      const { officer_in_charge, observations, shift } = req.body;
-      const stmt = db.prepare('INSERT INTO duty_log (officer_in_charge, observations, shift) VALUES (?, ?, ?)');
-      const info = stmt.run(officer_in_charge, observations, shift);
+      const { officer_in_charge, observations, shift, guard_shift_id } = req.body;
+      const stmt = db.prepare('INSERT INTO duty_log (officer_in_charge, observations, shift, guard_shift_id) VALUES (?, ?, ?, ?)');
+      const info = stmt.run(officer_in_charge, observations, shift, guard_shift_id);
       res.json({ id: info.lastInsertRowid });
     } catch (err) {
       res.status(500).json({ error: "Error creating duty log" });
@@ -406,7 +578,7 @@ async function startServer() {
     }
   });
 
-  app.get("/api/users", (req, res) => {
+  app.get("/api/users", authenticate, isAdmin, (req, res) => {
     try {
       const data = db.prepare('SELECT * FROM users').all();
       res.json(data);
@@ -415,7 +587,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/users", (req, res) => {
+  app.post("/api/users", authenticate, isAdmin, (req, res) => {
     try {
       const { username, name, role, permissions } = req.body;
       const stmt = db.prepare('INSERT INTO users (username, name, role, permissions) VALUES (?, ?, ?, ?)');
@@ -426,7 +598,7 @@ async function startServer() {
     }
   });
 
-  app.patch("/api/users/:id", (req, res) => {
+  app.patch("/api/users/:id", authenticate, isAdmin, (req, res) => {
     try {
       const { permissions } = req.body;
       db.prepare('UPDATE users SET permissions = ? WHERE id = ?').run(permissions, req.params.id);
@@ -436,7 +608,7 @@ async function startServer() {
     }
   });
 
-  app.get("/api/fleet", (req, res) => {
+  app.get("/api/fleet", authenticate, (req, res) => {
     try {
       const data = db.prepare('SELECT * FROM fleet').all();
       res.json(data);
@@ -445,12 +617,12 @@ async function startServer() {
     }
   });
 
-  app.post("/api/fleet", (req, res) => {
+  app.post("/api/fleet", authenticate, (req, res) => {
     try {
-      const { unit_id, type, model, patent, year, status, engine_number, kilometers, fuel_type, last_service_mileage, notes } = req.body;
-      const stmt = db.prepare('INSERT INTO fleet (unit_id, type, model, patent, year, status, engine_number, kilometers, fuel_type, last_service_mileage, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-      const info = stmt.run(unit_id, type, model, patent, year, status || 'OPERATIVO', engine_number, kilometers, fuel_type, last_service_mileage, notes);
-      db.prepare('INSERT INTO audit_log (action, details) VALUES (?, ?)').run('ALTA_FLOTA', `Unidad: ${unit_id}`);
+      const { unit_id, type, model, patent, year, status, engine_number, kilometers, fuel_type, last_service_mileage, last_service_date, notes } = req.body;
+      const stmt = db.prepare('INSERT INTO fleet (unit_id, type, model, patent, year, status, engine_number, kilometers, fuel_type, last_service_mileage, last_service_date, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+      const info = stmt.run(unit_id, type, model, patent, year, status || 'OPERATIVO', engine_number, kilometers, fuel_type, last_service_mileage, last_service_date, notes);
+      db.prepare('INSERT INTO audit_log (user_id, action, details) VALUES (?, ?, ?)').run(req.user.id, 'ALTA_FLOTA', `Unidad: ${unit_id}`);
       res.json({ id: info.lastInsertRowid });
     } catch (err) {
       console.error(err);
@@ -458,7 +630,7 @@ async function startServer() {
     }
   });
 
-  app.patch("/api/fleet/:id", (req, res) => {
+  app.patch("/api/fleet/:id", authenticate, (req, res) => {
     try {
       const { status, kilometers, last_service_mileage, notes } = req.body;
       const stmt = db.prepare(`
@@ -476,7 +648,27 @@ async function startServer() {
     }
   });
 
-  app.get("/api/fleet/fuel", (req, res) => {
+  app.get("/api/fleet/damages", authenticate, (req, res) => {
+    try {
+      const data = db.prepare('SELECT * FROM damage_log ORDER BY recorded_at DESC').all();
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: "Error fetch damages" });
+    }
+  });
+
+  app.post("/api/fleet/damages", authenticate, (req, res) => {
+    try {
+      const { unit_id, description, severity } = req.body;
+      const stmt = db.prepare('INSERT INTO damage_log (unit_id, description, severity) VALUES (?, ?, ?)');
+      stmt.run(unit_id, description, severity || 'MEDIA');
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Error reporting damage" });
+    }
+  });
+
+  app.get("/api/fleet/fuel", authenticate, (req, res) => {
     try {
       const data = db.prepare('SELECT * FROM fuel_log ORDER BY date DESC').all();
       res.json(data);
@@ -485,7 +677,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/fleet/fuel", (req, res) => {
+  app.post("/api/fleet/fuel", authenticate, (req, res) => {
     try {
       const { unit_id, kilometers, amount_liters, cost, recorded_by } = req.body;
       const stmt = db.prepare('INSERT INTO fuel_log (unit_id, kilometers, amount_liters, cost, recorded_by) VALUES (?, ?, ?, ?, ?)');
@@ -500,7 +692,7 @@ async function startServer() {
     }
   });
 
-  app.get("/api/fleet/maintenance", (req, res) => {
+  app.get("/api/fleet/maintenance", authenticate, (req, res) => {
     try {
       const data = db.prepare('SELECT * FROM maintenance_log ORDER BY date DESC').all();
       res.json(data);
@@ -509,7 +701,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/fleet/maintenance", (req, res) => {
+  app.post("/api/fleet/maintenance", authenticate, (req, res) => {
     try {
       const { unit_id, type, description, mileage, cost } = req.body;
       const stmt = db.prepare('INSERT INTO maintenance_log (unit_id, type, description, mileage, cost) VALUES (?, ?, ?, ?, ?)');
@@ -524,7 +716,7 @@ async function startServer() {
     }
   });
 
-  app.get("/api/payments", (req, res) => {
+  app.get("/api/payments", authenticate, (req, res) => {
     try {
       const data = db.prepare('SELECT * FROM payments ORDER BY date DESC').all();
       res.json(data);
@@ -533,7 +725,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/payments", (req, res) => {
+  app.post("/api/payments", authenticate, (req, res) => {
     try {
       const { payer_name, amount, category, concept } = req.body;
       const stmt = db.prepare('INSERT INTO payments (payer_name, amount, category, concept) VALUES (?, ?, ?, ?)');
@@ -544,7 +736,7 @@ async function startServer() {
     }
   });
 
-  app.get("/api/reservations", (req, res) => {
+  app.get("/api/reservations", authenticate, (req, res) => {
     try {
       const data = db.prepare('SELECT * FROM reservations ORDER BY start_time ASC').all();
       res.json(data);
@@ -553,7 +745,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/reservations", (req, res) => {
+  app.post("/api/reservations", authenticate, (req, res) => {
     try {
       const { user_name, field_name, start_time, end_time } = req.body;
       const stmt = db.prepare('INSERT INTO reservations (user_name, field_name, start_time, end_time) VALUES (?, ?, ?, ?)');
@@ -565,23 +757,44 @@ async function startServer() {
   });
 
   // Guard Shifts (Calendar)
-  app.get("/api/guard-shifts", (req, res) => {
+  app.get("/api/guard-shifts", authenticate, (req, res) => {
     try {
-      const data = db.prepare(`
+      const { date } = req.query;
+      let query = `
         SELECT gs.*, p.name as personnel_name, p.rank as personnel_rank
         FROM guard_shifts gs
         JOIN personnel p ON gs.personnel_id = p.id
-        ORDER BY gs.date ASC
-      `).all();
+      `;
+      let data;
+      if (date) {
+        query += " WHERE gs.date = ? ORDER BY gs.date ASC";
+        data = db.prepare(query).all(date);
+      } else {
+        query += " ORDER BY gs.date ASC";
+        data = db.prepare(query).all();
+      }
       res.json(data);
     } catch (err) {
       res.status(500).json({ error: "Error fetch guard shifts" });
     }
   });
 
-  app.post("/api/guard-shifts", (req, res) => {
+  app.post("/api/guard-shifts", authenticate, (req, res) => {
     try {
       const { personnel_id, date, shift_type } = req.body;
+
+      // Validate: Same person, same date
+      const existing = db.prepare('SELECT COUNT(*) as count FROM guard_shifts WHERE personnel_id = ? AND date = ?').get(personnel_id, date) as any;
+      if (existing.count > 0) {
+        return res.status(400).json({ error: "El personal ya tiene una guardia asignada para esta fecha" });
+      }
+
+      // Validate: Personnel must be ACTIVO
+      const person = db.prepare('SELECT status FROM personnel WHERE id = ?').get(personnel_id) as any;
+      if (person.status !== 'ACTIVO') {
+        return res.status(400).json({ error: "Solo se puede asignar guardia a personal ACTIVO" });
+      }
+
       const stmt = db.prepare('INSERT INTO guard_shifts (personnel_id, date, shift_type) VALUES (?, ?, ?)');
       const info = stmt.run(personnel_id, date, shift_type);
       res.json({ id: info.lastInsertRowid });
@@ -590,7 +803,7 @@ async function startServer() {
     }
   });
 
-  app.delete("/api/guard-shifts/:id", (req, res) => {
+  app.delete("/api/guard-shifts/:id", authenticate, (req, res) => {
     try {
       db.prepare('DELETE FROM guard_shifts WHERE id = ?').run(req.params.id);
       res.json({ success: true });
@@ -600,7 +813,7 @@ async function startServer() {
   });
 
   // Attendance (Check-in/Check-out)
-  app.get("/api/attendance", (req, res) => {
+  app.get("/api/attendance", authenticate, (req, res) => {
     try {
       const data = db.prepare(`
         SELECT a.*, p.name as personnel_name, p.rank as personnel_rank
@@ -614,7 +827,7 @@ async function startServer() {
     }
   });
 
-  app.get("/api/attendance/active", (req, res) => {
+  app.get("/api/attendance/active", authenticate, (req, res) => {
     try {
       const data = db.prepare(`
         SELECT a.*, p.name as personnel_name, p.rank as personnel_rank
@@ -628,18 +841,18 @@ async function startServer() {
     }
   });
 
-  app.post("/api/attendance/check-in", (req, res) => {
+  app.post("/api/attendance/check-in", authenticate, (req, res) => {
     try {
-      const { personnel_id, type, observations, recorded_by } = req.body;
-      const stmt = db.prepare('INSERT INTO attendance (personnel_id, type, observations, recorded_by) VALUES (?, ?, ?, ?)');
-      const info = stmt.run(personnel_id, type, observations, recorded_by);
+      const { personnel_id, type, observations, recorded_by, guard_shift_id } = req.body;
+      const stmt = db.prepare('INSERT INTO attendance (personnel_id, type, observations, recorded_by, guard_shift_id) VALUES (?, ?, ?, ?, ?)');
+      const info = stmt.run(personnel_id, type, observations, recorded_by, guard_shift_id);
       res.json({ id: info.lastInsertRowid });
     } catch (err) {
       res.status(500).json({ error: "Error check-in" });
     }
   });
 
-  app.post("/api/attendance/check-out/:id", (req, res) => {
+  app.post("/api/attendance/check-out/:id", authenticate, (req, res) => {
     try {
       const { observations, recorded_out_by } = req.body;
       db.prepare(`
@@ -655,7 +868,7 @@ async function startServer() {
     }
   });
 
-  app.get("/api/personnel/:id/attendance-stats", (req, res) => {
+  app.get("/api/personnel/:id/attendance-stats", authenticate, (req, res) => {
     try {
       const stats = db.prepare(`
         SELECT 

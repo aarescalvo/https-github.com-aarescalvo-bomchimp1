@@ -45,7 +45,12 @@ export default function Personal() {
     birthdate: '',
     address: '',
     email: '',
-    blood_group: 'A+'
+    blood_group: 'A+',
+    medical_expiry: '',
+    fitness_level: 'APTO',
+    allergies: '',
+    emergency_contact_name: '',
+    emergency_contact_phone: ''
   });
 
   const fetchPersonnel = async () => {
@@ -80,23 +85,49 @@ export default function Personal() {
     fetchPersonnel();
   }, []);
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const [isEditing, setIsEditing] = useState(false);
+
+  const handleCreateOrEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('/api/personnel', {
-        method: 'POST',
+      const url = isEditing ? `/api/personnel/${newPerson.id}` : '/api/personnel';
+      const method = isEditing ? 'PATCH' : 'POST';
+      
+      const res = await fetch(url, {
+        method: method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newPerson)
       });
       if (res.ok) {
-        toast.success('Personal registrado correctamente');
+        toast.success(isEditing ? 'Legajo actualizado' : 'Personal registrado correctamente');
         setShowModal(false);
-        setNewPerson({ name: '', rank: 'BOMBERO', dni: '', phone: '', status: 'ACTIVO', birthdate: '', address: '', email: '', blood_group: 'A+' });
+        setIsEditing(false);
+        setNewPerson({ name: '', rank: 'BOMBERO', dni: '', phone: '', status: 'ACTIVO', birthdate: '', address: '', email: '', blood_group: 'A+' } as any);
         fetchPersonnel();
       }
     } catch (err) {
-      toast.error('Error al registrar personal');
+      toast.error('Error al procesar solicitud');
     }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('¿Está seguro de dar de baja a este personal?')) return;
+    try {
+      const res = await fetch(`/api/personnel/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        toast.success('Personal dado de baja');
+        setSelectedPerson(null);
+        fetchPersonnel();
+      }
+    } catch (err) {
+      toast.error('Error al dar de baja');
+    }
+  };
+
+  const openEditModal = (p: Person) => {
+    setNewPerson({ ...p } as any);
+    setIsEditing(true);
+    setShowModal(true);
   };
 
   const handleCreateRecord = async (e: React.FormEvent) => {
@@ -178,6 +209,20 @@ export default function Personal() {
                   {p.name.charAt(0)}
                 </div>
                 <div className="flex flex-col items-end gap-2">
+                  <div className="flex gap-1 mb-1">
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); openEditModal(p); }}
+                      className="p-2 bg-gray-50 text-gray-400 hover:text-[#228BE6] rounded-lg transition-all"
+                    >
+                      <Plus size={14} className="rotate-45" /> {/* Use Plus as a close/edit icon for now, actually better to use Award or something else if I had Edit icon. Wait, I have Award. Let's use FileText if available. */}
+                    </button>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
+                      className="p-2 bg-gray-50 text-gray-400 hover:text-red-500 rounded-lg transition-all"
+                    >
+                      <Plus size={14} className="rotate-45" /> 
+                    </button>
+                  </div>
                   <span className={`px-3 py-1 ${
                     p.status === 'ACTIVO' ? 'bg-green-50 text-green-500' : 
                     p.status === 'RESERVA' ? 'bg-blue-50 text-blue-500' : 
@@ -247,11 +292,11 @@ export default function Personal() {
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1D2124]/80 backdrop-blur-md">
           <div className="bg-white w-full max-w-2xl rounded-[2.5rem] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
-            <form onSubmit={handleCreate} className="p-10 grid grid-cols-1 md:grid-cols-2 gap-10">
+            <form onSubmit={handleCreateOrEdit} className="p-10 grid grid-cols-1 md:grid-cols-2 gap-10">
               <div className="space-y-6">
                 <div>
-                  <h3 className="text-3xl font-black text-[#1D2124] uppercase mb-1">Nuevo Legajo</h3>
-                  <p className="text-gray-400 text-[10px] font-black uppercase tracking-[0.2em]">Carga de datos filiatorios</p>
+                  <h3 className="text-3xl font-black text-[#1D2124] uppercase mb-1">{isEditing ? 'Editar Legajo' : 'Nuevo Legajo'}</h3>
+                  <p className="text-gray-400 text-[10px] font-black uppercase tracking-[0.2em]">{isEditing ? 'Actualización de datos' : 'Carga de datos filiatorios'}</p>
                 </div>
                 <div className="space-y-4">
                   <div className="space-y-2">
@@ -313,6 +358,7 @@ export default function Personal() {
                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Estado</label>
                        <select className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-black uppercase" value={newPerson.status} onChange={(e) => setNewPerson({...newPerson, status: e.target.value})}>
                          <option value="ACTIVO">ACTIVO (CUARTEL)</option>
+                         <option value="EN GUARDIA">EN GUARDIA</option>
                          <option value="RESERVA">RESERVA</option>
                          <option value="LICENCIA">LICENCIA</option>
                          <option value="RETIRADO">RETIRADO</option>
@@ -320,10 +366,43 @@ export default function Personal() {
                        </select>
                     </div>
                   </div>
+                  <div className="pt-4 space-y-4 border-t border-gray-100 mt-4">
+                    <p className="text-[10px] font-black text-[#1D2124] uppercase tracking-widest italic">Información Médica y Emergencia</p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Vencimiento Médico</label>
+                        <input type="date" className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-bold" value={newPerson.medical_expiry} onChange={(e) => setNewPerson({...newPerson, medical_expiry: e.target.value})} />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Aptitud</label>
+                        <select className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-black uppercase" value={newPerson.fitness_level} onChange={(e) => setNewPerson({...newPerson, fitness_level: e.target.value})}>
+                          <option value="APTO">APTO</option>
+                          <option value="CONDICIONAL">CONDICIONAL</option>
+                          <option value="NO APTO">NO APTO</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Alergias / Observaciones</label>
+                      <input placeholder="E.G. PENICILINA, ASMA..." className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-bold uppercase" value={newPerson.allergies} onChange={(e) => setNewPerson({...newPerson, allergies: e.target.value})} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Contacto Emergencia</label>
+                        <input placeholder="NOMBRE" className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-bold uppercase" value={newPerson.emergency_contact_name} onChange={(e) => setNewPerson({...newPerson, emergency_contact_name: e.target.value})} />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Teléfono Emergencia</label>
+                        <input placeholder="TELÉFONO" className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-bold" value={newPerson.emergency_contact_phone} onChange={(e) => setNewPerson({...newPerson, emergency_contact_phone: e.target.value})} />
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 <div className="flex gap-4 pt-10">
                   <button type="button" onClick={() => setShowModal(false)} className="flex-1 h-16 border-2 border-gray-100 rounded-2xl font-black uppercase text-xs italic">Cerrar</button>
-                  <button type="submit" className="flex-1 h-16 bg-[#1D2124] text-[#FFD43B] font-black rounded-2xl uppercase text-xs italic shadow-xl">Guardar Legajo</button>
+                  <button type="submit" className="flex-1 h-16 bg-[#1D2124] text-[#FFD43B] font-black rounded-2xl uppercase text-xs italic shadow-xl">
+                    {isEditing ? 'Guardar Cambios' : 'Guardar Legajo'}
+                  </button>
                 </div>
               </div>
             </form>
@@ -345,6 +424,8 @@ export default function Personal() {
                   <div className="flex items-center gap-4 mt-2">
                      <span className="bg-[#FFD43B] text-[#1D2124] px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">{selectedPerson.rank}</span>
                      <span className="text-gray-400 text-[10px] font-black uppercase tracking-widest">ID: {selectedPerson.id}000{selectedPerson.dni.slice(-3)}</span>
+                     <button onClick={() => openEditModal(selectedPerson)} className="text-[#228BE6] text-[8px] font-black uppercase underline">Editar</button>
+                     <button onClick={() => handleDelete(selectedPerson.id)} className="text-[#FA5252] text-[8px] font-black uppercase underline ml-2">Dar de Baja</button>
                   </div>
                 </div>
               </div>
@@ -372,9 +453,20 @@ export default function Personal() {
                  </div>
                  <div className="p-6 bg-red-50 rounded-3xl border border-red-100">
                     <AlertTriangle className="text-red-500 mb-2" />
-                    <p className="text-[10px] font-black text-red-500 uppercase">Sin Alergias Registradas</p>
-                    <p className="text-[8px] font-black text-red-300 uppercase mt-1">Legajo médico completo</p>
+                    <p className="text-[10px] font-black text-red-500 uppercase">{selectedPerson.allergies || 'Sin Alergias Registradas'}</p>
+                    <p className="text-[8px] font-black text-red-300 uppercase mt-1">Aptitud: {selectedPerson.fitness_level || 'S/D'}</p>
+                    {selectedPerson.medical_expiry && (
+                      <p className="text-[8px] font-black text-red-300 uppercase">Vence: {selectedPerson.medical_expiry}</p>
+                    )}
                  </div>
+
+                 {selectedPerson.emergency_contact_name && (
+                   <div className="p-6 bg-blue-50 rounded-3xl border border-blue-100 mt-4">
+                     <Phone className="text-blue-500 mb-2" size={16} />
+                     <p className="text-[10px] font-black text-blue-500 uppercase">Emergencia: {selectedPerson.emergency_contact_name}</p>
+                     <p className="text-[8px] font-black text-blue-400 uppercase mt-1">{selectedPerson.emergency_contact_phone}</p>
+                   </div>
+                 )}
 
                  <div className="space-y-4">
                     <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest border-b pb-2 italic">Estadísticas de Servicio</h4>

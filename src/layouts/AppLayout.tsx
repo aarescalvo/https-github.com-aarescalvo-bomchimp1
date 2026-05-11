@@ -2,10 +2,10 @@ import React from 'react';
 import { Search, Bell } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 
-export default function AppLayout({ children, onLogout, settings }: { children: React.ReactNode, onLogout: () => void, settings: any }) {
+export default function AppLayout({ children, onLogout, settings, user }: { children: React.ReactNode, onLogout: () => void, settings: any, user: any }) {
   return (
     <div className="flex h-screen bg-[#F8F9FA] font-sans">
-      <Sidebar settings={settings} onLogout={onLogout} />
+      <Sidebar settings={settings} onLogout={onLogout} user={user} />
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">

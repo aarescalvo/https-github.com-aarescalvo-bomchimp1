@@ -29,28 +29,34 @@ interface Person {
 }
 
 export default function Guardia() {
-  const [activeTab, setActiveTab] = useState<'LIBRETA' | 'ASISTENCIA'>('ASISTENCIA');
+  const [activeTab, setActiveTab] = useState<'LIBRETA' | 'ASISTENCIA' | 'PROGRAMACION'>('ASISTENCIA');
   const [entries, setEntries] = useState<GuardEntry[]>([]);
   const [attendance, setAttendance] = useState<Attendance[]>([]);
   const [personnel, setPersonnel] = useState<Person[]>([]);
   const [loading, setLoading] = useState(true);
   
+  const [guardShifts, setGuardShifts] = useState<any[]>([]);
+  const [showShiftModal, setShowShiftModal] = useState(false);
+  const [newShift, setNewShift] = useState({ personnel_id: 0, date: new Date().toISOString().split('T')[0], shift_type: 'MAÑANA' });
+  
   const [showLibretaModal, setShowLibretaModal] = useState(false);
-  const [newEntry, setNewEntry] = useState({ officer_in_charge: '', observations: '', shift: 'DIURNA' });
+  const [newEntry, setNewEntry] = useState({ officer_in_charge: '', observations: '', shift: 'DIURNA', guard_shift_id: undefined });
 
   const [showCheckInModal, setShowCheckInModal] = useState(false);
-  const [checkInData, setCheckInData] = useState({ personnel_id: 0, type: 'GUARDIA', observations: '', recorded_by: '' });
+  const [checkInData, setCheckInData] = useState({ personnel_id: 0, type: 'GUARDIA', observations: '', recorded_by: '', guard_shift_id: undefined as number | undefined });
 
   const fetchData = async () => {
     try {
-      const [resEntries, resAttendance, resPersonnel] = await Promise.all([
+      const [resEntries, resAttendance, resPersonnel, resShifts] = await Promise.all([
         fetch('/api/duty-log'),
         fetch('/api/attendance'),
-        fetch('/api/personnel')
+        fetch('/api/personnel'),
+        fetch(`/api/guard-shifts?date=${new Date().toISOString().split('T')[0]}`)
       ]);
       setEntries(await resEntries.json());
       setAttendance(await resAttendance.json());
       setPersonnel(await resPersonnel.json());
+      setGuardShifts(await resShifts.json());
     } catch (err) {
       toast.error('Error al cargar datos');
     } finally {
@@ -61,6 +67,27 @@ export default function Guardia() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  const handleCreateShift = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/guard-shifts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newShift)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success('Guardia programada correctamente');
+        setShowShiftModal(false);
+        fetchData();
+      } else {
+        toast.error(data.error || 'Error al programar');
+      }
+    } catch (err) {
+      toast.error('Error de red');
+    }
+  };
 
   const handleCreateLibreta = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,11 +110,12 @@ export default function Guardia() {
 
   const handleCheckIn = async (e: React.FormEvent) => {
     e.preventDefault();
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
     try {
       const res = await fetch('/api/attendance/check-in', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(checkInData)
+        body: JSON.stringify({ ...checkInData, recorded_by: user.name || 'SISTEMA' })
       });
       if (res.ok) {
         toast.success('Ingreso registrado');
@@ -100,7 +128,8 @@ export default function Guardia() {
   };
 
   const handleCheckOut = async (id: number) => {
-    const operator = prompt('Nombre del operador que registra la salida:');
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const operator = prompt('Operador que registra la salida:', user.name || '');
     if (!operator) return;
     
     try {
@@ -165,6 +194,12 @@ export default function Guardia() {
              className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${activeTab === 'LIBRETA' ? 'bg-[#FFD43B] text-[#1D2124]' : 'text-gray-400 hover:bg-gray-50'}`}
            >
              Libreta de Guardia
+           </button>
+           <button 
+             onClick={() => setActiveTab('PROGRAMACION')}
+             className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${activeTab === 'PROGRAMACION' ? 'bg-[#FFD43B] text-[#1D2124]' : 'text-gray-400 hover:bg-gray-50'}`}
+           >
+             Programación
            </button>
         </div>
       </div>
@@ -342,6 +377,48 @@ export default function Guardia() {
         </div>
       )}
 
+      {activeTab === 'PROGRAMACION' && (
+        <div className="space-y-6">
+          <div className="flex justify-end">
+             <button 
+              onClick={() => setShowShiftModal(true)}
+              className="px-6 py-3 bg-[#FFD43B] text-[#1D2124] font-black rounded-xl shadow-[0_4px_0_0_#FAB005] hover:translate-y-[2px] transition-all flex items-center gap-2 uppercase text-xs italic"
+            >
+              <Plus size={18} /> Programar Nueva Guardia
+            </button>
+          </div>
+          
+          <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden p-8">
+            <h3 className="text-xl font-black text-[#1D2124] uppercase italic mb-6">Guardias Programadas de Hoy ({new Date().toLocaleDateString()})</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+               {['MAÑANA', 'TARDE', 'NOCHE'].map(type => (
+                 <div key={type} className="space-y-4">
+                    <div className="flex items-center gap-2 text-[10px] font-black text-gray-400 uppercase tracking-widest border-b pb-2">
+                       <Clock size={12} /> {type}
+                    </div>
+                    <div className="space-y-2">
+                       {guardShifts.filter(s => s.shift_type === type).map(s => (
+                          <div key={s.id} className="p-4 bg-gray-50 rounded-xl border border-gray-100 flex items-center justify-between">
+                             <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center text-[#FFD43B] shadow-sm">
+                                   <User size={16} />
+                                </div>
+                                <span className="text-[10px] font-black uppercase">{s.personnel_name}</span>
+                             </div>
+                             <div className={`w-2 h-2 rounded-full ${s.status === 'PRESENTE' ? 'bg-green-500' : 'bg-gray-300'}`} />
+                          </div>
+                       ))}
+                       {guardShifts.filter(s => s.shift_type === type).length === 0 && (
+                          <p className="text-[10px] font-bold text-gray-300 uppercase italic">Sin personal asignado</p>
+                       )}
+                    </div>
+                 </div>
+               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modals for Guardia and Attendance */}
       {showLibretaModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1D2124]/80 backdrop-blur-sm">
@@ -377,6 +454,20 @@ export default function Guardia() {
                     <option value="DIURNA">DIURNA (08:00 - 20:00)</option>
                     <option value="NOCTURNA">NOCTURNA (20:00 - 08:00)</option>
                     <option value="RESERVISTA">RESERVISTA / APOYO</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Resumen Programado (Opcional)</label>
+                  <select 
+                    className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-black focus:border-[#FFD43B] focus:outline-none transition-all"
+                    value={newEntry.guard_shift_id || ''}
+                    onChange={(e) => setNewEntry({...newEntry, guard_shift_id: e.target.value ? parseInt(e.target.value) : undefined as any})}
+                  >
+                    <option value="">Independiente / No Programado</option>
+                    {guardShifts.map(s => (
+                       <option key={s.id} value={s.id}>{s.personnel_name} - {s.shift_type}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -427,12 +518,20 @@ export default function Guardia() {
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Personal</label>
-                    <select 
-                      required
-                      className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-black uppercase"
-                      value={checkInData.personnel_id}
-                      onChange={e => setCheckInData({...checkInData, personnel_id: parseInt(e.target.value)})}
-                    >
+                      <select 
+                        required
+                        className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-black uppercase"
+                        value={checkInData.personnel_id}
+                        onChange={e => {
+                          const pid = parseInt(e.target.value);
+                          const shift = guardShifts.find(s => s.personnel_id === pid);
+                          setCheckInData({
+                            ...checkInData, 
+                            personnel_id: pid,
+                            guard_shift_id: shift?.id
+                          });
+                        }}
+                      >
                       <option value="">Seleccione Bombero</option>
                       {personnel.map(p => <option key={p.id} value={p.id}>{p.rank} {p.name}</option>)}
                     </select>
@@ -474,6 +573,40 @@ export default function Guardia() {
                 <div className="flex gap-4 pt-4">
                   <button type="button" onClick={() => setShowCheckInModal(false)} className="flex-1 h-12 border-2 border-gray-100 rounded-xl font-black uppercase text-xs">Cerrar</button>
                   <button type="submit" className="flex-1 h-12 bg-[#20C997] text-white font-black rounded-xl shadow-[0_4px_0_0_#0CA678] uppercase text-xs italic">Confirmar Ingreso</button>
+                </div>
+             </form>
+          </div>
+        </div>
+      )}
+      {showShiftModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1D2124]/80 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95">
+             <form onSubmit={handleCreateShift} className="p-8 space-y-6">
+                <h3 className="text-2xl font-black text-[#1D2124] uppercase italic">Programar Guardia</h3>
+                <div className="space-y-4">
+                   <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Personal</label>
+                      <select required className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-black uppercase" value={newShift.personnel_id} onChange={e => setNewShift({...newShift, personnel_id: parseInt(e.target.value)})}>
+                         <option value="">Seleccione Bombero</option>
+                         {personnel.filter(p => p.status === 'ACTIVO').map(p => <option key={p.id} value={p.id}>{p.rank} {p.name}</option>)}
+                      </select>
+                   </div>
+                   <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Fecha</label>
+                      <input type="date" className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-black" value={newShift.date} onChange={e => setNewShift({...newShift, date: e.target.value})} />
+                   </div>
+                   <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Turno</label>
+                      <select className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-black uppercase" value={newShift.shift_type} onChange={e => setNewShift({...newShift, shift_type: e.target.value})}>
+                         <option value="MAÑANA">MAÑANA</option>
+                         <option value="TARDE">TARDE</option>
+                         <option value="NOCHE">NOCHE</option>
+                      </select>
+                   </div>
+                </div>
+                <div className="flex gap-4">
+                  <button type="button" onClick={() => setShowShiftModal(false)} className="flex-1 h-12 border-2 border-gray-100 rounded-xl font-black uppercase text-xs">Cerrar</button>
+                  <button type="submit" className="flex-1 h-12 bg-[#FFD43B] text-[#1D2124] font-black rounded-xl shadow-[0_4px_0_0_#FAB005] uppercase text-xs italic">Agendar</button>
                 </div>
              </form>
           </div>
