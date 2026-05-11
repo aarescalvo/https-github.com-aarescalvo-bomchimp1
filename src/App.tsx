@@ -99,7 +99,7 @@ export default function App() {
                     <Route path="/dashboard" element={<Home settings={settings} />} />
                     <Route path="/ajustes" element={<SettingsPage settings={settings} onUpdate={fetchSettings} />} />
                     
-                    <Route path="/incidencias" element={<Incidencias />} />
+                    <Route path="/incidencias" element={<Incidencias settings={settings} />} />
                     <Route path="/personal" element={<Personal />} />
                     <Route path="/flota" element={<Flota />} />
                     <Route path="/pagos" element={<Pagos />} />

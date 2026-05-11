@@ -214,6 +214,38 @@ export default function Settings({ settings, onUpdate }: SettingsProps) {
               </div>
             </div>
             
+            <div className="space-y-6 pt-6 border-t border-gray-100">
+                <div className="flex items-center gap-3">
+                   <div className="w-10 h-10 bg-green-50 rounded-xl flex items-center justify-center text-[#25D366]">
+                      <Save size={18} />
+                   </div>
+                   <h4 className="text-lg font-black text-[#1D2124] uppercase italic">Alertas WhatsApp</h4>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Número o Link de Grupo</label>
+                    <input 
+                      type="text"
+                      placeholder="E.G. 5493487..."
+                      className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-bold focus:border-[#25D366] focus:outline-none transition-all"
+                      value={localSettings.whatsapp_alert_target || ''}
+                      onChange={(e) => setLocalSettings({...localSettings, whatsapp_alert_target: e.target.value})}
+                    />
+                    <p className="text-[8px] font-bold text-gray-400 uppercase italic">ID de Chat o Número (ej: 120363022515273574@g.us)</p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Encabezado de Alerta</label>
+                    <input 
+                      type="text"
+                      className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-bold focus:border-[#25D366] focus:outline-none transition-all"
+                      value={localSettings.whatsapp_alert_message_prefix || ''}
+                      onChange={(e) => setLocalSettings({...localSettings, whatsapp_alert_message_prefix: e.target.value})}
+                    />
+                  </div>
+                </div>
+            </div>
+            
             <button 
               disabled={loading}
               onClick={handleSaveTextSettings}

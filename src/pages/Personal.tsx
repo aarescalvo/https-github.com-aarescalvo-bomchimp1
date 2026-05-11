@@ -166,14 +166,24 @@ export default function Personal() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filtered.map((p) => (
           <div key={p.id} className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden group hover:border-[#FFD43B] transition-all flex flex-col">
-            <div className={`h-1.5 ${p.status === 'ACTIVO' ? 'bg-[#20C997]' : 'bg-[#FA5252]'}`} />
+            <div className={`h-1.5 ${
+              p.status === 'ACTIVO' ? 'bg-[#20C997]' : 
+              p.status === 'RESERVA' ? 'bg-[#228BE6]' : 
+              p.status === 'LICENCIA' ? 'bg-[#FFD43B]' : 
+              'bg-[#FA5252]'
+            }`} />
             <div className="p-6 flex-1 flex flex-col">
               <div className="flex justify-between items-start mb-6">
                 <div className="w-16 h-16 rounded-2xl bg-gray-50 flex items-center justify-center font-black text-2xl text-gray-300 group-hover:text-[#FFD43B] transition-colors uppercase">
                   {p.name.charAt(0)}
                 </div>
                 <div className="flex flex-col items-end gap-2">
-                  <span className={`px-3 py-1 ${p.status === 'ACTIVO' ? 'bg-green-50 text-green-500' : 'bg-red-50 text-red-500'} text-[8px] font-black rounded-full uppercase tracking-widest`}>
+                  <span className={`px-3 py-1 ${
+                    p.status === 'ACTIVO' ? 'bg-green-50 text-green-500' : 
+                    p.status === 'RESERVA' ? 'bg-blue-50 text-blue-500' : 
+                    p.status === 'LICENCIA' ? 'bg-yellow-50 text-[#FAB005]' : 
+                    'bg-red-50 text-red-500'
+                  } text-[8px] font-black rounded-full uppercase tracking-widest`}>
                     {p.status}
                   </span>
                   <div className="px-2 py-1 bg-yellow-50 text-[#FAB005] text-[8px] font-black rounded uppercase">GRUPO {p.blood_group}</div>
@@ -256,10 +266,14 @@ export default function Personal() {
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Jerarquía</label>
                       <select className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-black uppercase" value={newPerson.rank} onChange={(e) => setNewPerson({...newPerson, rank: e.target.value})}>
+                        <option value="ASPIRANTE">ASPIRANTE</option>
                         <option value="BOMBERO">BOMBERO</option>
                         <option value="CABO">CABO</option>
+                        <option value="CABO 1RO">CABO 1RO</option>
                         <option value="SARGENTO">SARGENTO</option>
+                        <option value="SARGENTO 1RO">SARGENTO 1RO</option>
                         <option value="OFICIAL">OFICIAL</option>
+                        <option value="SUBCOMANDANTE">SUBCOMANDANTE</option>
                         <option value="COMANDANTE">COMANDANTE</option>
                       </select>
                     </div>
@@ -294,6 +308,16 @@ export default function Personal() {
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Teléfono</label>
                       <input className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-bold" value={newPerson.phone} onChange={(e) => setNewPerson({...newPerson, phone: e.target.value})} />
+                    </div>
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Estado</label>
+                       <select className="w-full h-12 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 text-sm font-black uppercase" value={newPerson.status} onChange={(e) => setNewPerson({...newPerson, status: e.target.value})}>
+                         <option value="ACTIVO">ACTIVO (CUARTEL)</option>
+                         <option value="RESERVA">RESERVA</option>
+                         <option value="LICENCIA">LICENCIA</option>
+                         <option value="RETIRADO">RETIRADO</option>
+                         <option value="BAJA">BAJA</option>
+                       </select>
                     </div>
                   </div>
                 </div>

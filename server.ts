@@ -166,6 +166,8 @@ async function startServer() {
     INSERT OR IGNORE INTO settings (key, value) VALUES ('dashboard_title', 'Dashboard Operativo');
     INSERT OR IGNORE INTO settings (key, value) VALUES ('dashboard_subtitle', 'Resumen en tiempo real del cuartel');
     INSERT OR IGNORE INTO settings (key, value) VALUES ('logo_url', '');
+    INSERT OR IGNORE INTO settings (key, value) VALUES ('whatsapp_alert_target', '');
+    INSERT OR IGNORE INTO settings (key, value) VALUES ('whatsapp_alert_message_prefix', '🚨 *DESPACHO DE EMERGENCIA BVC* 🚨');
   `);
 
   // Migrations for existing data

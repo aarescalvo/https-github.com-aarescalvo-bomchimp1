@@ -58,14 +58,19 @@ export default function Home({ settings }: { settings: any }) {
   }, []);
 
   const handleWhatsAppDispatch = (inc: any) => {
-    const message = `🚨 *DESPACHO DE EMERGENCIA BVC* 🚨\n\n` + 
+    const prefix = settings.whatsapp_alert_message_prefix || '🚨 *DESPACHO DE EMERGENCIA BVC* 🚨';
+    const message = `${prefix}\n\n` + 
                     `📍 *UBICACIÓN:* ${inc.location}\n` +
                     `🔥 *TIPO:* ${inc.type}\n` +
                     `📝 *INFO:* ${inc.description}\n` +
                     `⏰ *SALIDA:* ${new Date().toLocaleTimeString()}\n\n` +
                     `*POR FAVOR REPORTARSE AL CUARTEL INMEDIATAMENTE*`;
     
-    const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
+    const target = settings.whatsapp_alert_target || '';
+    const url = target 
+      ? `https://wa.me/${target.includes('@') ? '' : target}?text=${encodeURIComponent(message)}`
+      : `https://wa.me/?text=${encodeURIComponent(message)}`;
+    
     window.open(url, '_blank');
   };
 
